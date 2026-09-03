@@ -129,6 +129,15 @@ public partial class App : Application {
                 diag.AppendLine("status_age_s: " +
                     (DateTime.Now - File.GetLastWriteTime(stPath)).TotalSeconds.ToString("0.0"));
 
+            // v3 update: replace only the official Jump blocks once. Existing
+            // gait tuning, bones, names, custom characters and other data stay.
+            diag.AppendLine("jump_defaults_v3: " +
+                JumpDefaultsMigration.Apply(ManagerDir, dataRoot));
+            // v3.0.1 only: correct the accidentally packaged intermediate
+            // Default Jump table, but only for untouched exact 3.0.0 values.
+            diag.AppendLine("jump_defaults_v3_0_1_hotfix: " +
+                JumpDefaultsV301Hotfix.Apply(ManagerDir, dataRoot));
+
             Ctx = new AppCtx(dataRoot, ManagerDir);
             Ctx.Load();
             ChangeLog.Init(ManagerDir);

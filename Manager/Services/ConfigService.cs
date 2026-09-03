@@ -34,6 +34,19 @@ public class ConfigService {
 
     public int NextRevision() => Revision + 1;
 
+    // Repair stale/invalid selections written by older Managers (notably
+    // Default.template). Preserve the global enabled state and only recover
+    // when a real Default preset is available.
+    public bool RecoverInvalidActivePreset(PresetService presets) {
+        if (presets.IsSelectablePreset(ActivePreset)) return false;
+        if (!presets.IsSelectablePreset("Default")) return false;
+        string rejected = ActivePreset;
+        Write(NextRevision(), "Default", Enabled);
+        ChangeLog.Append("[Preset] recovered invalid active preset '" + rejected +
+                         "' -> Default (rev=" + Revision + ")");
+        return true;
+    }
+
     // Atomic write with the NEW revision (apply trigger).
     public void Write(int newRevision, string presetName, bool enabled) {
         var sb = new StringBuilder();

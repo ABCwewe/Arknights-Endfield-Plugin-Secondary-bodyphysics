@@ -34,11 +34,25 @@ public class PresetService {
 
     public string PathOf(string name) => Path.Combine(_presetsDir, name + ".json");
 
+    // Keep Manager-visible names aligned with Runtime path-safety rules.
+    // In particular, packaged *.template.json files are seed data, not
+    // selectable presets.
+    public static bool IsValidPresetName(string name) {
+        if (string.IsNullOrWhiteSpace(name) || name != name.Trim()) return false;
+        if (name.IndexOfAny(new[] { '.', '/', '\\', ':' }) >= 0) return false;
+        return name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+    }
+
+    public bool IsSelectablePreset(string name) =>
+        IsValidPresetName(name) && File.Exists(PathOf(name));
+
     public List<string> ListPresets() {
         var names = new List<string>();
         if (!Directory.Exists(_presetsDir)) return names;
-        foreach (var f in Directory.GetFiles(_presetsDir, "*.json"))
-            names.Add(Path.GetFileNameWithoutExtension(f));
+        foreach (var f in Directory.GetFiles(_presetsDir, "*.json")) {
+            string name = Path.GetFileNameWithoutExtension(f);
+            if (IsValidPresetName(name)) names.Add(name);
+        }
         names.Sort(StringComparer.OrdinalIgnoreCase);
         return names;
     }
@@ -63,7 +77,6 @@ public class PresetService {
             c.Enabled = JsonMini.GetBool(node, "enabled", c.Enabled);
             string mode = JsonMini.GetStr(node, "motion_mode", "");
             if (mode.Length > 0) c.Mode = mode;
-            c.AmpScale = JsonMini.GetNum(node, "amplitude_scale", c.AmpScale);
             object o;
             if (node.TryGetValue("gait", out o) && o is Dictionary<string, object> gait)
                 CharacterDatabaseService.ApplyGait(gait, c);
@@ -73,7 +86,7 @@ public class PresetService {
                 c.EnvIdle = JsonMini.GetNum(env, "to_idle_release_tau_sec", c.EnvIdle);
             }
             if (node.TryGetValue("jump", out o) && o is Dictionary<string, object> jump)
-                c.JumpEnabled = JsonMini.GetBool(jump, "enabled", c.JumpEnabled);
+                CharacterDatabaseService.ApplyJump(jump, c);
             if (node.TryGetValue("native_amplify", out o) && o is Dictionary<string, object> na)
                 c.NativeFactor = JsonMini.GetNum(na, "factor", c.NativeFactor);
             if (node.TryGetValue("axis", out o) && o is Dictionary<string, object> axis) {
@@ -92,8 +105,7 @@ public class PresetService {
             var c = chars[i];
             sb.Append("    ").Append(JsonMini.Str(c.Id)).Append(": {\r\n");
             sb.Append("      \"enabled\": ").Append(c.Enabled ? "true" : "false").Append(",\r\n");
-            sb.Append("      \"motion_mode\": ").Append(JsonMini.Str(c.Mode)).Append(",\r\n");
-            sb.Append("      \"amplitude_scale\": ").Append(JsonMini.Num(c.AmpScale)).Append(",\r\n");
+            sb.Append("      \"motion_mode\": ").Append(JsonMini.Str(c.Mode)).Append(",").Append(Environment.NewLine);
             if (c.Axis.Length > 0)
                 sb.Append("      \"axis\": { \"name\": ").Append(JsonMini.Str(c.Axis))
                   .Append(", \"sign\": ").Append(c.AxisSign < 0 ? "-1" : "1").Append(" },\r\n");
@@ -109,8 +121,9 @@ public class PresetService {
               .Append("        \"frequency_tau_sec\": ").Append(JsonMini.Num(c.EnvFreq)).Append(",\r\n")
               .Append("        \"to_idle_release_tau_sec\": ").Append(JsonMini.Num(c.EnvIdle)).Append("\r\n")
               .Append("      },\r\n");
-            sb.Append("      \"jump\": { \"enabled\": ").Append(c.JumpEnabled ? "true" : "false")
-              .Append(", \"mode\": \"").Append(c.JumpEnabled ? "landing_damped" : "off").Append("\" },\r\n");
+            sb.Append("      \"jump\": ")
+              .Append(CharacterDatabaseService.JumpEntryJson(c))
+              .Append(",").Append(Environment.NewLine);
             sb.Append("      \"native_amplify\": { \"factor\": ").Append(JsonMini.Num(c.NativeFactor)).Append(" }\r\n");
             sb.Append("    }").Append(i < chars.Count - 1 ? "," : "").Append("\r\n");
         }

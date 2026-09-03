@@ -18,11 +18,7 @@ struct SyntheticMotion {
 
   // Compute the output angle (radians, axis-sign applied) for this callback.
   // Advances envelope at most once per frame (multi-instance safe).
-  // `squadFactor` is applied to the AMPLITUDE TARGET before the envelope
-  // (baseline: ampTarget *= factor, then envelope advances) — NOT to the
-  // output angle.
-  float ComputeAngle(ActiveCharacterRuntime &c, const CharacterProfile &p,
-                     float squadFactor) {
+  float ComputeAngle(ActiveCharacterRuntime &c, const CharacterProfile &p) {
     int gait = c.currentGait;
     // baseline kGaitAmp is RADIANS; config stores degrees -> convert here
     bool validGait = gait >= GaitIdle && gait <= GaitZipline;
@@ -39,28 +35,30 @@ struct SyntheticMotion {
       downTarget = 0.0f;
     }
 
-    ampTarget *= c.boneAmplitudeScale;  // family × profile scale
-    ampTarget *= squadFactor;           // squad compensation (pre-envelope)
-    downTarget *= c.boneAmplitudeScale;
-    downTarget *= squadFactor;
-
     if (c.transitionToIdle) {
       ampTarget = 0.0f;   // to-idle fast release
       downTarget = 0.0f;
     }
 
+    bool groundMoving = IsGroundLocomotionOnsetEligible(
+        gait, c.transitionToIdle, c.jumpDetected);
+    float attackTau = SelectLocomotionAttackTau(
+        groundMoving, envelope.Amplitude(), envelope.DownAmplitude(),
+        ampTarget, downTarget, p.envelope.amplitudeAttackTauSec,
+        c.synthetic.wasGroundLocomotionMoving,
+        c.synthetic.locomotionOnsetActive);
+
     envelope.Advance(ampTarget, downTarget, freqTarget, c.transitionToIdle,
-                     p.envelope.amplitudeAttackTauSec,
+                     attackTau,
                      p.envelope.toIdleReleaseTauSec,
                      p.envelope.frequencyTauSec);
 
     float angle;
     if (c.jumpActive) {
-      // landing-only damped settle (baseline simplified jump).  Baseline
-      // does NOT apply the squad factor to the jump curve — same here.
-      angle = jump.Tick(true, p.jump, c.boneAmplitudeScale);
+      // landing-only damped settle (baseline simplified jump).
+      angle = jump.Tick(true, p.jump);
     } else {
-      jump.Tick(false, p.jump, c.boneAmplitudeScale);
+      jump.Tick(false, p.jump);
       float amp = envelope.Amplitude();
       float down = envelope.DownAmplitude();
       float ph = envelope.Phase();

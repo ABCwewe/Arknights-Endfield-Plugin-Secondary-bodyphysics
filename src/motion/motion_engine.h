@@ -17,8 +17,8 @@
 #include "../config/config_types.h"
 #include "../il2cpp/il2cpp_api.h"
 #include "gait_sampler.h"
+#include "jump_inertial_source.h"
 #include "native_amplifier.h"
-#include "party_compensator.h"
 #include "synthetic_motion.h"
 
 // Marker cache updated by the worker thread (low frequency), read-only here.
@@ -64,17 +64,10 @@ public:
     if (cfg->revision != lastRevision_) {
       lastRevision_ = cfg->revision;
       sampler_.ForceRefresh(active_, *cfg);
+      jumpInertial_.Reset();
     }
 
-    // squad detection frame counter (baseline: per-frame call count,
-    // frameGrouped via Unity frameCount; every callback counts)
     int frame = GetUnityFrame();
-    if (frame != sqFrame_) {
-      sqFrame_ = frame;
-      sqCalls_ = 0;
-    }
-    sqCalls_++;
-    if (frame < 0) sqCalls_ = 1;
 
     // character switch -> reset engine-side state (amplifier base etc.).
     // Compare AFTER ObserveCallback so a same-frame switch is caught here
@@ -161,9 +154,9 @@ public:
   void OnCharacterReset() {
     active_.synthetic = SyntheticRuntime();
     active_.jump = JumpRuntime();
+    jumpInertial_.Reset();
     active_.replay = ReplayRuntime();
     amplifier_.Reset();
-    compensator_.Reset();
   }
 
   // ---- gates (V2 default: config-driven; legacy markers only when
@@ -190,13 +183,46 @@ private:
     if (!cfg->pluginEnabled) return;  // global switch OFF — no write
     if (!active_.bones.breastR || !active_.bones.breastL) return;
     __try {
-      // Callback-stack compensation (V2 formula, eased); applied to the
-      // amplitude target INSIDE ComputeAngle (pre-envelope).
-      float factor = compensator_.GetFactor(cfg->global.partyCompensation,
-                                            sqCalls_);
-      if (factor < 0.0f) factor = 0.0f;
+      float angle = synthetic_.ComputeAngle(active_, *active_.profile);
+      const bool liveJumpConfigured =
+          active_.profile->jump.enabled &&
+          active_.profile->jump.mode == "landing_damped";
+      JumpInertialOutput jumpOut = jumpInertial_.Tick(
+          NowMs(), active_.jumpSignal, active_.profile->jump,
+          liveJumpConfigured);
 
-      float angle = synthetic_.ComputeAngle(active_, *active_.profile, factor);
+      // An inertial Jump epoch owns the angle until its bounded landing tail
+      // settles. A Jump clip without an accepted exact-start epoch (notably a
+      // direct fall/heavy landing) remains completely native.
+      const bool jumpOwnsIntent =
+          liveJumpConfigured &&
+          (active_.jumpDetected || jumpOut.valid || jumpOut.directLanding);
+      if (jumpOwnsIntent) {
+        if (!jumpOut.valid) {
+          active_.synthetic.targetValid = false;
+          return;
+        }
+        angle = jumpOut.angleRad * active_.axisSign *
+                AutomaticJumpDirection(active_.axis);
+      }
+
+      if (jumpOut.acceptedStart)
+        ProbeLog("[JUMP-E] epoch=%u Rising accepted\n", jumpOut.eventEpoch);
+      if (jumpOut.acceptedLanding)
+        ProbeLog("[JUMP-E] epoch=%u LandingTail accepted\n",
+                 jumpOut.eventEpoch);
+      if (jumpOut.directLanding)
+        ProbeLog("[JUMP-E] direct landing -> native-only\n");
+
+      // Unsupported/idle clips and disabled Jump still advance the envelope
+      // toward zero, but must never compose, write, or replay a synthetic
+      // target. This is the fail-closed write boundary.
+      if (!jumpOut.valid &&
+          !CanWriteSynthetic(active_.currentGait, active_.jumpDetected,
+                             active_.profile->jump.enabled)) {
+        active_.synthetic.targetValid = false;
+        return;
+      }
 
       Quat targetR, targetL;
       SyntheticMotion::ComposeTargets(active_, angle, targetR, targetL);
@@ -213,8 +239,8 @@ private:
 
       static DWORD s_preLogT = 0;
       if (RateLimit(s_preLogT, 2000))
-        ProbeLog("[PRE] gait=%d ang=%.1fdeg factor=%.2f calls=%d\n",
-                 active_.currentGait, RadToDeg(angle), factor, sqCalls_);
+        ProbeLog("[PRE] gait=%d ang=%.1fdeg\n",
+                 active_.currentGait, RadToDeg(angle));
     } __except (1) {
     }
   }
@@ -241,13 +267,10 @@ private:
   GaitSampler &sampler_;
   ActiveCharacterRuntime &active_;
   MarkerState &markers_;
-  LegacyCallbackStackCompensation compensator_;
   SyntheticMotion synthetic_;
+  JumpInertialSource jumpInertial_;
   NativeAmplifier amplifier_;
   void *lastAnimator_ = nullptr;
   int lastRevision_ = -1;
   int lastWriteFrame_ = -1;  // frame dedup: first PreLateTick per frame writes
-
-  int sqFrame_ = -1;
-  int sqCalls_ = 0;
 };

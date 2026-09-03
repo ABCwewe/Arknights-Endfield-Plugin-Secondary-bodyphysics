@@ -3,7 +3,6 @@
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
     <sys:String x:Key="C_advanced">Advanced</sys:String>
     <sys:String x:Key="C_amplify_native">Amplify Native</sys:String>
-    <sys:String x:Key="C_amplitude_scale">Amplitude scale</sys:String>
     <sys:String x:Key="C_apply">Apply</sys:String>
     <sys:String x:Key="C_auto">Auto</sys:String>
     <sys:String x:Key="C_axis">Axis</sys:String>
@@ -28,7 +27,7 @@
     <sys:String x:Key="C_higher_slower_frequency_changes_lowe">Higher = slower frequency changes · Lower = quicker response</sys:String>
     <sys:String x:Key="C_higher_smoother_transitions_lower_mo">Higher = smoother transitions · Lower = more responsive</sys:String>
     <sys:String x:Key="C_id_dev">ID (dev)</sys:String>
-    <sys:String x:Key="C_jump_legacy_landing_damped">Jump (legacy landing damped)</sys:String>
+
     <sys:String x:Key="C_mode">Mode</sys:String>
     <sys:String x:Key="C_native_amplify">Native amplify</sys:String>
     <sys:String x:Key="C_original_off">Original (off)</sys:String>
@@ -81,7 +80,6 @@
     <sys:String x:Key="D_z">Z</sys:String>
     <sys:String x:Key="M_advanced">Advanced</sys:String>
     <sys:String x:Key="M_amplify_native">Amplify Native</sys:String>
-    <sys:String x:Key="M_amplitude_scale">Amplitude scale</sys:String>
     <sys:String x:Key="M_apply">Apply</sys:String>
     <sys:String x:Key="M_auto">Auto</sys:String>
     <sys:String x:Key="M_axis">Axis</sys:String>
@@ -105,6 +103,31 @@
     <sys:String x:Key="M_higher_for_motions_to_motions_smooth">Higher = For motions to motions, smoother transitions · Lower = more responsive</sys:String>
     <sys:String x:Key="M_higher_slower_frequency_changes_lowe">Higher = slower frequency changes · Lower = quicker response</sys:String>
     <sys:String x:Key="M_jump_legacy_landing_damped">Jump (legacy landing damped)</sys:String>
+    <sys:String x:Key="M_jump_inertia">Jump / Inertia</sys:String>
+    <sys:String x:Key="M_jump_inertia_hint">Per-character jump tuning · test in game</sys:String>
+    <sys:String x:Key="M_jump_enabled">Enable Jump inertia for this character</sys:String>
+    <sys:String x:Key="M_jump_takeoff_delay">Takeoff delay (s)</sys:String>
+    <sys:String x:Key="M_jump_rising_target">Rising down target (deg)</sys:String>
+    <sys:String x:Key="M_jump_rising_target_hint">Downward direction is locked.</sys:String>
+    <sys:String x:Key="M_jump_apex_falling_target">Apex/falling up target (deg)</sys:String>
+    <sys:String x:Key="M_jump_apex_falling_target_hint">Upward target during apex and descent.</sys:String>
+    <sys:String x:Key="M_jump_acceleration_response">Acceleration response</sys:String>
+    <sys:String x:Key="M_jump_acceleration_response_hint">Higher values lift the chest further upward while falling.</sys:String>
+    <sys:String x:Key="M_jump_acceleration_filter_tau">Acceleration filter tau (s)</sys:String>
+    <sys:String x:Key="M_jump_natural_frequency">Spring frequency (Hz)</sys:String>
+    <sys:String x:Key="M_jump_natural_frequency_hint">Lower values increase the landing impulse amplitude.</sys:String>
+    <sys:String x:Key="M_jump_damping_ratio">Spring damping ratio</sys:String>
+    <sys:String x:Key="M_jump_damping_ratio_hint">Recommended range: 0.3–0.6.</sys:String>
+    <sys:String x:Key="M_jump_landing_impulse_gain">Landing impulse gain</sys:String>
+    <sys:String x:Key="M_jump_landing_impulse_gain_hint">Higher values increase the downward swing on landing.</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_amplitude">Landing shake amplitude (deg)</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_amplitude_hint">Oscillation amplitude while transitioning back to rest.</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_frequency">Landing shake frequency (Hz)</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_damping_tau">Landing decay tau (s)</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_duration">Landing shake duration (s)</sys:String>
+    <sys:String x:Key="M_jump_shake_preset">Landing shake profile</sys:String>
+    <sys:String x:Key="M_jump_shake_preset_hint">Sets Decay Tau, Shake Frequency, and Duration as one tuned group.</sys:String>
+    <sys:String x:Key="M_jump_shake_preset_values">Decay {0}s · Frequency {1}Hz · Duration {2}s</sys:String>
     <sys:String x:Key="M_main">Main</sys:String>
     <sys:String x:Key="M_mode">Mode</sys:String>
     <sys:String x:Key="M_native_amplify">Native amplify</sys:String>

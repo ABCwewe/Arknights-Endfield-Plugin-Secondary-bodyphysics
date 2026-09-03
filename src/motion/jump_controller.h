@@ -23,8 +23,8 @@ struct JumpController {
   }
 
   // Call every frame while the character exists.  Returns current jump
-  // angle (radians, includes amplitudeScale) or 0 when inactive.
-  float Tick(bool landingActive, const JumpConfig &cfg, float ampScale) {
+  // angle (radians) or 0 when inactive.
+  float Tick(bool landingActive, const JumpConfig &cfg) {
     if (!cfg.enabled || cfg.mode != "landing_damped") {
       active = false;
       t = -1.0f;
@@ -57,7 +57,7 @@ struct JumpController {
       active = false;
       t = -1.0f;
     }
-    return DegToRad(angle) * ampScale;
+    return DegToRad(angle);
   }
 
   bool EnabledAndActive() const { return active; }

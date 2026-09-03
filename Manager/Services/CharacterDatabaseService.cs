@@ -55,6 +55,8 @@ public class CharacterDatabaseService {
                         c.EnvFreq = JsonMini.GetNum(env, "frequency_tau_sec", c.EnvFreq);
                         c.EnvIdle = JsonMini.GetNum(env, "to_idle_release_tau_sec", c.EnvIdle);
                     }
+                    if (defs.TryGetValue("jump", out o) && o is Dictionary<string, object> jump)
+                        ApplyJump(jump, c);
                     if (defs.TryGetValue("native_amplify", out o) && o is Dictionary<string, object> na)
                         c.NativeFactor = JsonMini.GetNum(na, "factor", c.NativeFactor);
                 }
@@ -78,6 +80,39 @@ public class CharacterDatabaseService {
             c.AmpDown[i] = JsonMini.GetNum(g, "amplitude_down_deg", 0.0);
             c.Freq[i] = JsonMini.GetNum(g, "frequency_hz", c.Freq[i]);
         }
+    }
+
+    public static void ApplyJump(Dictionary<string, object> jump, CharacterData c) {
+        c.JumpEnabled = JsonMini.GetBool(jump, "enabled", c.JumpEnabled);
+        c.JumpAmplitude = JsonMini.GetNum(jump, "amplitude_deg", c.JumpAmplitude);
+        c.JumpDampingTau = JsonMini.GetNum(jump, "damping_tau_sec", c.JumpDampingTau);
+        c.JumpFrequency = JsonMini.GetNum(jump, "frequency_hz", c.JumpFrequency);
+        c.JumpMaxDuration = JsonMini.GetNum(jump, "max_duration_sec", c.JumpMaxDuration);
+        c.JumpTakeoffDelay = JsonMini.GetNum(jump, "takeoff_delay_sec", c.JumpTakeoffDelay);
+        c.JumpRisingTarget = JsonMini.GetNum(jump, "rising_target_deg", c.JumpRisingTarget);
+        c.JumpApexFallingTarget = JsonMini.GetNum(jump, "apex_falling_target_deg", c.JumpApexFallingTarget);
+        c.JumpAccelerationResponse = JsonMini.GetNum(jump, "acceleration_response", c.JumpAccelerationResponse);
+        c.JumpAccelerationFilterTau = JsonMini.GetNum(jump, "acceleration_filter_tau_sec", c.JumpAccelerationFilterTau);
+        c.JumpNaturalFrequency = JsonMini.GetNum(jump, "natural_frequency_hz", c.JumpNaturalFrequency);
+        c.JumpDampingRatio = JsonMini.GetNum(jump, "damping_ratio", c.JumpDampingRatio);
+        c.JumpLandingImpulseGain = JsonMini.GetNum(jump, "landing_impulse_gain", c.JumpLandingImpulseGain);
+    }
+
+    public static string JumpEntryJson(CharacterData c) {
+        return "{ \"enabled\": " + (c.JumpEnabled ? "true" : "false") +
+            ", \"mode\": \"" + (c.JumpEnabled ? "landing_damped" : "off") + "\"" +
+            ", \"amplitude_deg\": " + JsonMini.Num(c.JumpAmplitude) +
+            ", \"damping_tau_sec\": " + JsonMini.Num(c.JumpDampingTau) +
+            ", \"frequency_hz\": " + JsonMini.Num(c.JumpFrequency) +
+            ", \"max_duration_sec\": " + JsonMini.Num(c.JumpMaxDuration) +
+            ", \"takeoff_delay_sec\": " + JsonMini.Num(c.JumpTakeoffDelay) +
+            ", \"rising_target_deg\": " + JsonMini.Num(c.JumpRisingTarget) +
+            ", \"apex_falling_target_deg\": " + JsonMini.Num(c.JumpApexFallingTarget) +
+            ", \"acceleration_response\": " + JsonMini.Num(c.JumpAccelerationResponse) +
+            ", \"acceleration_filter_tau_sec\": " + JsonMini.Num(c.JumpAccelerationFilterTau) +
+            ", \"natural_frequency_hz\": " + JsonMini.Num(c.JumpNaturalFrequency) +
+            ", \"damping_ratio\": " + JsonMini.Num(c.JumpDampingRatio) +
+            ", \"landing_impulse_gain\": " + JsonMini.Num(c.JumpLandingImpulseGain) + " }";
     }
 
     // Serialize one gait entry (used by preset + DB writers).
@@ -133,6 +168,16 @@ public class CharacterDatabaseService {
             root["characters"] = new Dictionary<string, object>();
         var chars = (Dictionary<string, object>)root["characters"];
 
+        // Technical animation rules are DB-owned. Re-scanning an existing
+        // character may replace bones/defaults, but must not erase its
+        // official special-movement whitelist.
+        Dictionary<string, object>? existingAnimationRules = null;
+        if (chars.TryGetValue(c.Id, out object? existingObj) &&
+            existingObj is Dictionary<string, object> existingEntry &&
+            existingEntry.TryGetValue("animation_rules", out object? rulesObj) &&
+            rulesObj is Dictionary<string, object> rules)
+            existingAnimationRules = rules;
+
         var entry = new Dictionary<string, object>();
         entry["display_name"] = displayName;
         var bones = new Dictionary<string, object>();
@@ -146,7 +191,6 @@ public class CharacterDatabaseService {
             axis["sign"] = c.AxisSign < 0 ? -1.0 : 1.0;
             entry["axis"] = axis;
         }
-        entry["bone_scale"] = c.AmpScale;
         var defaults = new Dictionary<string, object>();
         var gait = new Dictionary<string, object>();
         string[] gnames = { "idle", "walk", "run", "sprint", "zipline" };
@@ -164,13 +208,27 @@ public class CharacterDatabaseService {
         env["to_idle_release_tau_sec"] = c.EnvIdle;
         defaults["envelope"] = env;
         var jump = new Dictionary<string, object>();
-        jump["enabled"] = false;
-        jump["mode"] = "off";
+        jump["enabled"] = c.JumpEnabled;
+        jump["mode"] = c.JumpEnabled ? "landing_damped" : "off";
+        jump["amplitude_deg"] = c.JumpAmplitude;
+        jump["damping_tau_sec"] = c.JumpDampingTau;
+        jump["frequency_hz"] = c.JumpFrequency;
+        jump["max_duration_sec"] = c.JumpMaxDuration;
+        jump["takeoff_delay_sec"] = c.JumpTakeoffDelay;
+        jump["rising_target_deg"] = c.JumpRisingTarget;
+        jump["apex_falling_target_deg"] = c.JumpApexFallingTarget;
+        jump["acceleration_response"] = c.JumpAccelerationResponse;
+        jump["acceleration_filter_tau_sec"] = c.JumpAccelerationFilterTau;
+        jump["natural_frequency_hz"] = c.JumpNaturalFrequency;
+        jump["damping_ratio"] = c.JumpDampingRatio;
+        jump["landing_impulse_gain"] = c.JumpLandingImpulseGain;
         defaults["jump"] = jump;
         var na = new Dictionary<string, object>();
         na["factor"] = c.NativeFactor;
         defaults["native_amplify"] = na;
         entry["defaults"] = defaults;
+        if (existingAnimationRules != null)
+            entry["animation_rules"] = existingAnimationRules;
         chars[c.Id] = entry;
         var sb = new StringBuilder();
         sb.Append("{\r\n  \"schema_version\": 1,\r\n  \"characters\": {\r\n");
@@ -229,20 +287,41 @@ public class CharacterDatabaseService {
             sb.Append(",\r\n      \"axis\": { \"name\": ").Append(JsonMini.Str((string)axis["name"]))
               .Append(", \"sign\": ").Append(JsonMini.Num((double)axis["sign"])).Append(" }");
         }
-        sb.Append(",\r\n      \"bone_scale\": ").Append(JsonMini.Num((double)e["bone_scale"]));
+        if (e.TryGetValue("animation_rules", out object? rulesObj) &&
+            rulesObj is Dictionary<string, object> rules) {
+            sb.Append(",\r\n      \"animation_rules\": { ");
+            bool firstRule = true;
+            foreach (var rule in rules) {
+                if (rule.Value is not string gaitName) continue;
+                if (!firstRule) sb.Append(", ");
+                sb.Append(JsonMini.Str(rule.Key)).Append(": ").Append(JsonMini.Str(gaitName));
+                firstRule = false;
+            }
+            sb.Append(" }");
+        }
         var d = (Dictionary<string, object>)e["defaults"];
         var gait = (Dictionary<string, object>)d["gait"];
         sb.Append(",\r\n      \"defaults\": {\r\n        \"gait\": {\r\n");
-        string[] gnames2 = { "idle", "walk", "run", "sprint" };
-        for (int i = 0; i < 4; i++) {
-            var g = (Dictionary<string, object>)gait[gnames2[i]];
-            sb.Append("          ").Append(CharacterDatabaseService.GaitEntryJson(
+        string[] gnames2 = { "idle", "walk", "run", "sprint", "zipline" };
+        // DB defaults are intentionally partial: the runtime tolerates a
+        // missing gait sub-block (e.g. zipline) by falling back to defaults,
+        // and the Manager reader skips absent keys.  Mirror that here so a
+        // save/rewrite never throws "The given key 'zipline' was not
+        // present in the dictionary."  Emit only the gait entries present.
+        bool wroteGait = false;
+        for (int i = 0; i < 5; i++) {
+            if (!gait.TryGetValue(gnames2[i], out object? gObj) ||
+                !(gObj is Dictionary<string, object> g)) continue;
+            if (wroteGait) sb.Append(",");
+            sb.Append(wroteGait ? "\r\n          " : "          ")
+              .Append(CharacterDatabaseService.GaitEntryJson(
                 gnames2[i],
                 JsonMini.GetNum(g, "amplitude_deg", 0),
                 JsonMini.GetNum(g, "amplitude_down_deg", 0),
-                JsonMini.GetNum(g, "frequency_hz", 1.5)))
-              .Append(i < 3 ? "," : "").Append("\r\n");
+                JsonMini.GetNum(g, "frequency_hz", 1.5)));
+            wroteGait = true;
         }
+        sb.Append("\r\n");
         var env = (Dictionary<string, object>)d["envelope"];
         sb.Append("        },\r\n        \"envelope\": {\r\n")
           .Append("          \"amplitude_attack_tau_sec\": ").Append(JsonMini.Num((double)env["amplitude_attack_tau_sec"])).Append(",\r\n")
@@ -250,7 +329,23 @@ public class CharacterDatabaseService {
           .Append("          \"to_idle_release_tau_sec\": ").Append(JsonMini.Num((double)env["to_idle_release_tau_sec"])).Append("\r\n")
           .Append("        },\r\n");
         var jump = (Dictionary<string, object>)d["jump"];
-        sb.Append("        \"jump\": { \"enabled\": false, \"mode\": \"off\" },\r\n");
+        var jumpData = new CharacterData {
+            JumpEnabled = JsonMini.GetBool(jump, "enabled", false),
+            JumpAmplitude = JsonMini.GetNum(jump, "amplitude_deg", 23.333),
+            JumpDampingTau = JsonMini.GetNum(jump, "damping_tau_sec", 0.35),
+            JumpFrequency = JsonMini.GetNum(jump, "frequency_hz", 3.0),
+            JumpMaxDuration = JsonMini.GetNum(jump, "max_duration_sec", 1.20),
+            JumpTakeoffDelay = JsonMini.GetNum(jump, "takeoff_delay_sec", 0.08),
+            JumpRisingTarget = JsonMini.GetNum(jump, "rising_target_deg", -23.333),
+            JumpApexFallingTarget = JsonMini.GetNum(jump, "apex_falling_target_deg", 23.333),
+            JumpAccelerationResponse = JsonMini.GetNum(jump, "acceleration_response", 0.1667),
+            JumpAccelerationFilterTau = JsonMini.GetNum(jump, "acceleration_filter_tau_sec", 0.08),
+            JumpNaturalFrequency = JsonMini.GetNum(jump, "natural_frequency_hz", 2.2),
+            JumpDampingRatio = JsonMini.GetNum(jump, "damping_ratio", 0.52),
+            JumpLandingImpulseGain = JsonMini.GetNum(jump, "landing_impulse_gain", 6.667)
+        };
+        sb.Append("        \"jump\": ").Append(JumpEntryJson(jumpData))
+          .Append(",").Append(Environment.NewLine);
         var na = (Dictionary<string, object>)d["native_amplify"];
         sb.Append("        \"native_amplify\": { \"factor\": ").Append(JsonMini.Num((double)na["factor"])).Append(" }\r\n")
           .Append("      }\r\n    }");

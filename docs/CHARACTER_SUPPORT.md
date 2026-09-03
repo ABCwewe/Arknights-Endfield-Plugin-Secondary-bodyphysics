@@ -1,66 +1,168 @@
-# 角色支持指南 (CHARACTER_SUPPORT)
+# 角色支持与入库指南
 
-版本：Architecture v1.0（2026-08-17）
+更新日期：2026-08-23
 
-## 已确认骨型家族（基线实测）
+## 1. 角色支持模型
 
-| 家族 | 骨名 | 角色系 | 轴 | 缩放 | 候选表序 |
-|---|---|---|---|---|---|
-| girl | `breast_R/L_01_jnt` | 伊冯等 | Z | 1.0 | 0 |
-| lady | `R/L_breast_01_jnt` | 奥罗拉等 | Z | 1.0 | 1 |
-| xiong | `xiong_R/L_0_skin_jnt` | 庄方宜/莱万汀等 | Y | 0.4 | 2 |
-| 变体 | `breast_R/L_01` | — | Z | 1.0 | 3 |
-| 变体 | `R/L_breast_01` | — | Z | 1.0 | 4 |
-| 变体 | `xiong_R/L_0_skin` | — | Y | 0.4 | 5 |
+角色支持分成两层：
 
-- xiong 是末端皮肤骨（杠杆臂大）→ 同角度视觉幅度大 → 0.4 缩放。
-- xiong 的 X 轴=乳尖外指（像拧螺丝，错误），Z=左右晃（错误），Y=前后摆（正确）。
+```text
+SecondaryMotion/data/characters.default.json
+  技术 DB：稳定 chr_id、显示名、骨骼、axis/sign、默认参数、animation_rules
 
-## 已知角色（default.json 已配置）
+SecondaryMotion/presets/<name>.json
+  用户参数：enabled、motion_mode、axis/sign、五个 gait、envelope、jump、native factor
+```
 
-| 角色 id | 名字 | 家族 | 轴/缩放 |
-|---|---|---|---|
-| `chr_0014_aurora` | 奥罗拉 | lady (R_breast_01_jnt) | Z / 1.0 |
-| `chr_0017_yvonne` | 伊冯 | girl (breast_R_01_jnt) | Z / 1.0 |
-| `chr_0003_endminf` | 安多恩/endminf | xiong | Y / 0.4 |
-| `chr_0030_zhuangfy` | 庄方宜 | xiong | Y / 0.4 |
-| `chr_0016_laevat` | 莱万汀 | xiong | Y / 0.4 |
+Runtime 只有在以下条件同时成立时才会写入：
 
-单人测试建议：**奥罗拉**（lady 系，基线多次验证）。
+1. 当前主控角色规范化后得到稳定 `chr_id`；
+2. DB 中存在该角色；
+3. profile 与全局开关 enabled；
+4. 左右骨骼都找到；
+5. 当前 gait 通过 locomotion whitelist；
+6. 当前状态通过 Jump/target write gate。
 
-## 角色识别（重要修正）
+未配置角色和单边骨骼配置均 fail closed，不会猜测并写入未知 Transform。
 
-游戏运行时角色的 GameObject 名带 `_postmodel` 后缀：
-`chr_0003_endminf_postmodel` → canonical id `chr_0003_endminf`。
+当前仓库 DB 和 Default preset 各包含 19 个角色；这是当前数据状态，不是 Runtime 上限。
 
-- 插件自动剥离 `_postmodel` / `(Clone)` / `#数字` 后缀再查 preset。
-- 日志 `[CHAR] GO="..." id="..."` 同时打印原始名与规范化 id。
+## 2. 角色 ID 规范化
 
-## 新角色更新流程（你自用的方法）
+游戏对象名可能包含运行时后缀，例如：
 
-不用等任何人，一次游戏会话即可：
+```text
+chr_0003_endminf_postmodel
+chr_0003_endminf(Clone)
+chr_0003_endminf#1
+```
 
-1. **采集真实 id**：进游戏切一圈想加的角色（队伍切换/替换），
-   `plugin/secondary_motion/known_characters.json` 自动记录所有出现过的
-   原始 GO 名（2s 刷新，去重）。
-2. **确认骨骼**：创建 `plugin/bone_scan_test.txt` → 日志
-   `[BONE-SCAN]` 输出当前角色骨架树（含 breast 关键字行）。确认胸骨名
-   属于哪个家族。
-3. **试轴**：创建 `plugin/axis_test.txt` → 3 秒固定角度测试
-   （`diagnostics.json` 的 `axis_tester` 可改轴/角度/符号）。看晃动方向：
-   - 前后摆 = 轴正确（再验 sign）
-   - 左右晃 = 换轴；拧转 = 轴错
-4. **加 preset**：复制 `default.json` 里 `_template_character` 块，把键名
-   改成真实 id，`axis`/`amplitude_scale` 填实测值（或按家族默认：
-   girl/lady→Z/1.0，xiong→Y/0.4）。
-5. **重启验证**：日志应有 `[CHAR] id=.. profile=FOUND` + `[BONE] FOUND`，
-   runtime_status.json 的 active_character 显示该 id。
+Runtime 规范化后使用稳定 ID：
 
-预设更新 = 改 JSON + 重启游戏，无热重载。每次新角色多复制一个块即可。
+```text
+chr_0003_endminf
+```
 
-## 已知注意事项
+日志和 `runtime/runtime_status.json.character` 使用规范化 ID。显示名只用于 Manager UI；DB/preset 的键始终是稳定 `chr_id`，不能用本地化角色名替代。
 
-- 同骨名在不同角色上轴/杠杆臂可能仍有差异 → 按角色独立配置是硬要求。
-- `spring_base_*_jnt` 是衣服弹簧骨骼，不是胸骨（勿误配）。
-- 未配置角色 = fail-closed（原生），不会乱晃，但也不会生效 —— 这是设计。
-- 四人队：V1 保持 `legacy_four_stack`（×0.25）；精确修复是 V2 研究项。
+## 3. 当前骨骼候选表
+
+显式 DB 骨骼优先；允许 fallback 时按下列顺序搜索：
+
+| 顺序 | Right | Left | 自动 axis |
+|---:|---|---|---|
+| 0 | `breast_R_01_jnt` | `breast_L_01_jnt` | Z |
+| 1 | `R_breast_01_jnt` | `L_breast_01_jnt` | Z |
+| 2 | `xiong_R_0_skin_jnt` | `xiong_L_0_skin_jnt` | Y |
+| 3 | `breast_R_01` | `breast_L_01` | Z |
+| 4 | `R_breast_01` | `L_breast_01` | Z |
+| 5 | `xiong_R_0_skin` | `xiong_L_0_skin` | Y |
+
+注意：
+
+- 候选必须左右成对找到；只找到一侧视为失败。
+- `spring_base_*_jnt` 是衣服/装饰弹簧骨，不应当作胸骨。
+- xiong 通常使用 Y，其他候选通常使用 Z；DB/preset 显式 axis 可覆盖自动选择。
+- 当前不再存在骨型统一倍率或 scale。不同角色的视觉差异直接通过每角色 gait Up/Down 调整。
+
+## 4. Up / Down 语义
+
+每个 gait 使用：
+
+```json
+{
+  "amplitude_deg": 30,
+  "amplitude_down_deg": 35,
+  "frequency_hz": 2.7
+}
+```
+
+- `amplitude_deg`：首半周期上摆，对应 Manager 的 Up。
+- `amplitude_down_deg`：次半周期下摆，对应 Manager 的 Down。
+- `amplitude_down_deg=0` 或缺失：Down 与 Up 对称。
+- Main 和 Characters 两页均使用相同语义。
+
+正式 gait：
+
+```text
+idle / walk / run / sprint / zipline
+```
+
+## 5. Manager Developer 入库流程
+
+新角色不需要手工创建 marker 文件。正式流程通过：
+
+```text
+Manager Developer page
+→ runtime/developer_command.json
+→ Runtime 主线程执行 Scan
+→ developer/bone_dumps/<chr_id>.json
+→ Manager 读取结果
+```
+
+操作顺序：
+
+1. 启动游戏并切到目标角色。
+2. 确认 Developer 页已显示正确 `chr_id`；游戏未运行时显示 `-`/not detected 是正常离线状态。
+3. 点击 Scan，等待 Runtime 生成该角色的 bone dump。
+4. 用过滤器查看 `breast,xiong` 等候选，分别选择 Right 和 Left。
+5. 可填写显示名。
+6. 点击 Save。
+7. Manager 重载 DB，并增加 `runtime/config.json.revision`，让 Runtime 热重载。
+8. 回 Main/Characters 页调整 axis、sign、各 gait Up/Down/Frequency 和 envelope，再 Apply。
+
+当前 Scan 实现保持单次 one-shot command + 每秒轮询 dump；本轮没有修改 Scan 时机、清旧 dump 或重试策略。若没有结果，应先确认游戏仍运行、当前角色已检测、Runtime status 新鲜，再决定是否重新点击；不要把离线 status 当成角色扫描故障。
+
+## 6. Axis Test 的定位
+
+Developer Axis Test 仍保留为可选诊断工具，但不是新角色入库必经步骤：
+
+- 它只发送短时 `axis_test` Developer command；
+- 测试结果不会由 Save 自动写入角色 DB；
+- 正常工作流是在角色入库后，直接在 Main/Characters 页选择 axis/sign 并 Apply；
+- 因此本轮没有实现 Axis Test 结果持久化，也没有把它加入 Save 的技术事实。
+
+## 7. Save 行为
+
+Developer Save 当前执行：
+
+- 新建或更新 DB entry 的显示名、左右骨骼和 defaults；
+- 保存五个 gait，包括 Zipline；
+- 新角色复制 Aurora 在 Manager 当前合并模型中的 gait/envelope/mode/jump/native 参数；
+- 已有角色重新 Save 时保留自身参数，不被 Aurora 覆盖；
+- 已有 `animation_rules` 在重写 DB 时保留；
+- 工具目录写入使用 `.bak` + atomic write；
+- Save 后尝试镜像到游戏 `SecondaryMotion/data/characters.default.json`，随后 revision+1。
+
+DB/preset 长期 source-of-truth、版本升级 merge 和用户数据覆盖策略仍是独立架构议题；本文只记录当前实现，不把现状描述成最终升级协议。
+
+## 8. 角色专属动画规则
+
+DB 可为角色增加 special/dash locomotion 映射：
+
+```json
+"animation_rules": {
+  "actual_special_move_clip_fragment": "run",
+  "actual_dash_clip_fragment": "sprint"
+}
+```
+
+约束：
+
+- gait 值只接受 `walk/run/sprint/zipline`；
+- 最多 16 条，超过时整组拒绝并写配置日志；
+- 多条同时命中时，最长 clip fragment 优先；
+- 规则属于技术 DB，不属于用户 preset；
+- 未配置规则的 special/dash/未知 clip 继续 fail closed。
+
+## 9. 验收
+
+Save/Apply 后至少确认：
+
+- `runtime_status.json` 在 5 秒内持续刷新；
+- `character` 是当前稳定 `chr_id`；
+- `profile=true`；
+- `bones=true`；
+- `mode` 与 Manager 一致；
+- `applied_revision` 等于 Manager 写入 revision；
+- walk/run/sprint/zipline 分别测试，非 locomotion 状态不应继续写入。

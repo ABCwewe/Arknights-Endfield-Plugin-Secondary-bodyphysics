@@ -13,7 +13,7 @@
 
 struct DevCommand {
   bool active = false;
-  int revision = -1;
+  int revision = -1;             // last processed; survives active-state clear
   char type[16] = {0};        // none|axis_test|bone_scan|clip_inspect|record
   char characterId[64] = {0};
   int axis = 2;               // 0=X 1=Y 2=Z
@@ -27,7 +27,8 @@ static DevCommand g_devCmd;
 
 static void DevCommandClear() {
   g_devCmd.active = false;
-  g_devCmd.revision = -1;
+  g_devCmd.type[0] = 0;
+  g_devCmd.expiresAt = 0;
 }
 
 // Poll runtime/developer_command.json; called from the service worker only.
@@ -41,7 +42,7 @@ static void DevCommandPoll() {
     return;
   }
   int rev = (int)root.GetNumber("revision", 0);
-  if (rev == g_devCmd.revision) return;  // unchanged since last poll
+  if (rev <= g_devCmd.revision) return;  // old/already processed
   g_devCmd.revision = rev;
 
   std::string cmd = root.GetString("command", "");

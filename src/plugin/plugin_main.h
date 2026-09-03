@@ -28,15 +28,33 @@
 #include "../runtime/dev_command.h"
 #include "runtime_status.h"
 
-// Baseline marker directory (legacy compatibility).
-static const char *kMarkerDir =
-    "E:/GAMU/Hypergryph Launcher/games/Endfield Game/plugin/";
-
+// Legacy marker compatibility. The directory is derived from the loaded
+// Runtime root instead of a machine-specific game installation path.
 static bool MarkerPresent(const char *name) {
   char path[512];
-  snprintf(path, sizeof(path), "%s%s", kMarkerDir, name);
+  if (!RuntimePluginPath(path, sizeof(path), name)) return false;
   DWORD attr = GetFileAttributesA(path);
   return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static void JumpPhaseAFlushIfSealed() {
+  static JumpPhaseAFlushSchedule s_flushSchedule;
+  DWORD now = GetTickCount();
+  if (!s_flushSchedule.Due(now, g_jumpPhaseATimeline.State())) return;
+  char path[512];
+  RuntimePath(path, sizeof(path),
+              "developer\\jump_phase_d_timeline.csv");
+  if (JumpPhaseAWriteCsvAtomic(path, g_jumpPhaseATimeline)) {
+    g_jumpPhaseATimeline.MarkFlushed();
+    s_flushSchedule.Reset();
+    ProbeLog("[JUMP-A] timeline flushed rows=%zu path=%s\n",
+             g_jumpPhaseATimeline.Count(), path);
+  } else {
+    s_flushSchedule.OnFailure(now);
+    static DWORD s_jumpPhaseAFlushLogT = 0;
+    if (RateLimit(s_jumpPhaseAFlushLogT, 2000))
+      ProbeLog("[JUMP-A] timeline flush failed; sealed data retained\n");
+  }
 }
 
 // ---- global service objects (single TU) ----
@@ -90,14 +108,18 @@ static bool PluginStartup() {
     return false;
   }
   RuntimeDirsEnsure();
+  if (!g_jumpPhaseATimeline.Initialize()) {
+    Log("[PLUGIN] FAIL: Jump Phase A ring allocation -> DISABLED_SAFE");
+    snprintf(g_lastError, sizeof(g_lastError), "Jump Phase A ring allocation failed");
+    return false;
+  }
   if (!ConfigInstallInitial(0)) {
     Log("[PLUGIN] FAIL: initial config invalid -> DISABLED_SAFE");
-    snprintf(g_lastError, sizeof(g_lastError), "config invalid");
+    snprintf(g_lastError, sizeof(g_lastError), "%s", ConfigLastError());
     return false;
   }
   const ConfigSnapshot *cfg0 = ConfigAcquire();
   g_state = PluginState::CONFIG_LOADED;
-  ValidateSnapshot(*cfg0);
   LoadDiagnosticsConfig();
   KnownCharactersInit();
 
@@ -219,11 +241,23 @@ static DWORD WINAPI PluginWorker(LPVOID) {
         const ConfigSnapshot *cur = ConfigAcquire();
         if (!cur || cur->revision != rc.revision) {
           if (ConfigReloadIfChanged(rc.revision)) {
+            g_lastError[0] = 0;
             Log("[CFG] hot apply revision=%d -> ACK", rc.revision);
           } else {
-            Log("[CFG] hot apply revision=%d rejected (invalid)", rc.revision);
+            snprintf(g_lastError, sizeof(g_lastError), "%s", ConfigLastError());
+            Log("[CFG] hot apply revision=%d rejected (invalid): %s",
+                rc.revision, ConfigLastError());
           }
+        } else if (ConfigLastError()[0]) {
+          // A transient malformed write was repaired without changing the
+          // already-applied revision.
+          ConfigClearLastError();
+          g_lastError[0] = 0;
+          Log("[CFG] runtime config recovered at revision=%d", rc.revision);
         }
+      } else {
+        snprintf(g_lastError, sizeof(g_lastError), "%s", ConfigLastError());
+        Log("[CFG] runtime config poll rejected: %s", ConfigLastError());
       }
     }
 
@@ -239,16 +273,19 @@ static DWORD WINAPI PluginWorker(LPVOID) {
     // Diagnostics: arm main-thread hooks (the actual Unity API work runs on
     // PreLateTick via MotionEngine.diag — never on this worker thread).
     static bool s_boneScanArmed = false;
+    static bool s_configRecorderStarted = false;
+    static DWORD s_configRecorderRetryT = 0;
     if (g_diagCfg.enabled) {
       if (g_diagCfg.boneScanner && !s_boneScanArmed) {
         g_engine.diag.boneScanPending = true;
         s_boneScanArmed = true;
       }
-      if (g_diagCfg.transformRecorder) {
-        if (g_recFile || MarkerPresent("record_test.txt"))
-          TransformRecorderEnsureInit(g_active);
-        else
-          TransformRecorderStop();
+      if (g_diagCfg.transformRecorder && !s_configRecorderStarted &&
+          RateLimit(s_configRecorderRetryT, 2000)) {
+        if (TransformRecorderEnsureInit(g_active)) {
+          s_configRecorderStarted = true;
+          ProbeLog("[DIAG] recorder started from diagnostics config\n");
+        }
       }
       if (g_diagCfg.axisTester && !g_axisTester.armed) g_axisTester.Arm();
       if (g_diagCfg.hookHealth) HookHealthLog();
@@ -269,6 +306,9 @@ static DWORD WINAPI PluginWorker(LPVOID) {
           ClipInspectorRun(g_clipReader, animator);
         };  // rate-limited inside
     }
+
+    // Phase A ring is immutable after Sealed; only the worker persists it.
+    JumpPhaseAFlushIfSealed();
 
     // runtime_status.json (~1s) + known-character collector flush (~2s)
     if (RateLimit(s_statusT, 1000))

@@ -40,7 +40,10 @@ public static class JsonMini {
     public static double GetNum(Dictionary<string, object> node, string key, double def = 0) {
         object o;
         if (node.TryGetValue(key, out o)) {
-            try { return Convert.ToDouble(o, CultureInfo.InvariantCulture); } catch { }
+            try {
+                double d = Convert.ToDouble(o, CultureInfo.InvariantCulture);
+                return double.IsFinite(d) ? d : def;
+            } catch { }
         }
         return def;
     }
@@ -142,5 +145,9 @@ public static class JsonMini {
         return sb.Append('"').ToString();
     }
 
-    public static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    public static string Num(double v) {
+        if (!double.IsFinite(v))
+            throw new ArgumentOutOfRangeException(nameof(v), "JSON number must be finite");
+        return v.ToString("R", CultureInfo.InvariantCulture);
+    }
 }

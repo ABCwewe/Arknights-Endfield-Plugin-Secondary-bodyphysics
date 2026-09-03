@@ -1,114 +1,271 @@
-# Secondary Motion 工具 — 配置指南 (CONFIG_SCHEMA)
+# Secondary Motion 配置结构
 
-版本：Architecture v1.0（2026-08-17）。所有配置**重启生效**（V1 无热重载）。
+更新日期：2026-08-23
+Schema version：角色 DB 与 preset 当前均为 1。
 
-## 文件布局
+## 1. 文件布局
 
-```
-plugin/secondary_motion/
-├─ settings.json          （选 preset + 总开关）
-├─ runtime_status.json    （插件自写：生效状态证明）
+```text
+<game root>/SecondaryMotion/
+├─ data/
+│  └─ characters.default.json
 ├─ presets/
-│  ├─ default.json        （完整快照，基线值）
-│  └─ user_example.json   （示例）
-└─ diagnostics/
-   └─ diagnostics.json    （开发诊断开关，默认全关）
+│  ├─ Default.json
+│  └─ <other>.json
+├─ runtime/
+│  ├─ config.json
+│  ├─ runtime_status.json
+│  └─ developer_command.json
+├─ developer/
+│  ├─ diagnostics.json
+│  ├─ bone_dumps/
+│  └─ breast_record.csv
+└─ logs/
 ```
 
-## settings.json
+三类配置职责不同：
 
-| 字段 | 取值 | 说明 |
+| 文件 | 职责 | 主要写入者 |
 |---|---|---|
-| `schema_version` | 1 | 不支持其他版本 → 插件 DISABLED_SAFE |
-| `enabled` | true/false | false = 插件完全关闭（原生） |
-| `active_preset` | 预设名 | 对应 `presets/<名>.json` |
-| `config_reload` | `restart_only` | V1 仅支持重启 |
+| `data/characters.default.json` | 角色技术事实、骨骼、axis、默认值、animation rules | Manager Developer/Characters |
+| `presets/<name>.json` | 用户运动参数和角色 override | Manager Apply |
+| `runtime/config.json` | 总开关、active preset、revision、可选 global | Manager ConfigService |
 
-## preset 结构（完整快照，禁止 merge/继承）
+`runtime_status.json` 和 `developer_command.json` 是 Runtime/Manager 通信文件，不是 preset。
 
-### global
+## 2. runtime/config.json
+
+Manager 当前写出的最小结构：
+
+```json
+{
+  "revision": 2,
+  "enabled": true,
+  "active_preset": "Default"
+}
+```
+
+字段：
+
+| 字段 | 规则 | 说明 |
+|---|---|---|
+| `revision` | 非负整数 | revision 变化触发完整 hot reload |
+| `enabled` | boolean | false 时全局停止自定义写入，但仍加载配置/status |
+| `active_preset` | string | 对应 `presets/<name>.json`；拒绝路径分隔符和 `..` |
+| `global` | object，可选 | Runtime 低频参数和 legacy marker compatibility |
+
+可选 `global`：
 
 ```json
 "global": {
-  "party_compensation": {
-    "enabled": true,
-    "strategy": "legacy_four_stack",   // V1 唯一策略（基线 workaround）
-    "four_member_factor": 0.25,        // 四人队幅度补偿（已验证）
-    "transition_tau_sec": 0.15         // 进出小队状态的平滑时间常数
-  },
-  "gait_sample_interval_ms": 50,       // 20Hz 采样
-  "entity_refresh_interval_ms": 500,   // 主控 animator 刷新
-  "replay_verify_window_ms": 150,      // 幂等重放验证窗口
-  "legacy_marker_mode": true           // true=保留 spring/amplify marker 门控（基线行为）
+  "gait_sample_interval_ms": 50,
+  "entity_refresh_interval_ms": 500,
+  "replay_verify_window_ms": 150,
+  "legacy_marker_mode": false
 }
 ```
 
-### characters.<id>
+三个 interval 必须是正整数。`legacy_marker_mode=false` 是当前默认；true 时 `spring_test.txt` / `amplify_test.txt` 继续作为写入门控。
+
+现行 schema 没有 party compensation。frame dedup 已消除 callback stacking，因此不要再添加 `party_compensation`、`four_member_factor` 等旧字段。
+
+## 3. 角色技术 DB
+
+结构：
 
 ```json
-"chr_0017_yvonne": {
-  "enabled": true,                      // false = 完全原生
-  "motion_mode": "synthetic",           // off | synthetic | amplify_native（互斥）
-  "bones": {
-    "right": "breast_R_01_jnt",         // 显式骨名（空=用候选表）
-    "left":  "breast_L_01_jnt",
-    "allow_fallback_candidates": true   // 显式找不到时是否回退候选表
-  },
-  "axis": { "name": "Z", "sign": 1.0 }, // X/Y/Z；sign ±1（轴方向试错）
-  "amplitude_scale": 1.0,               // 整体幅度缩放（xiong 族建议 0.4）
-  "gait": {
-    "idle":   { "amplitude_deg": 0.0,  "frequency_hz": 1.2 },
-    "walk":   { "amplitude_deg": 3.6,  "frequency_hz": 1.5 },
-    "run":    { "amplitude_deg": 8.5,  "frequency_hz": 1.7 },
-    "sprint": { "amplitude_deg": 12.0, "frequency_hz": 2.0 }
-  },
-  "envelope": {
-    "amplitude_attack_tau_sec": 0.15,   // 幅度进入
-    "frequency_tau_sec": 0.20,          // 频率平滑
-    "to_idle_release_tau_sec": 0.015    // 停步快速释放（~0.05s 归零）
-  },
-  "jump": {
-    "enabled": false,                   // 产品默认建议 off
-    "mode": "landing_damped",           // off | landing_damped
-    "amplitude_deg": 10.0,
-    "damping_tau_sec": 0.3,
-    "frequency_hz": 1.5,
-    "max_duration_sec": 1.2
-  },
-  "native_amplify": { "factor": 2.0 }   // amplify_native 模式的放大倍数 K
+{
+  "schema_version": 1,
+  "characters": {
+    "chr_0014_aurora": {
+      "display_name": "Snowshine",
+      "bones": {
+        "right": "R_breast_01_jnt",
+        "left": "L_breast_01_jnt",
+        "allow_fallback_candidates": true
+      },
+      "axis": { "name": "Z", "sign": 1 },
+      "animation_rules": {
+        "optional_clip_fragment": "run"
+      },
+      "defaults": {
+        "gait": {
+          "idle":    { "amplitude_deg": 0,  "frequency_hz": 1.2 },
+          "walk":    { "amplitude_deg": 3.6, "frequency_hz": 1.5 },
+          "run":     { "amplitude_deg": 8.5, "frequency_hz": 1.7 },
+          "sprint":  { "amplitude_deg": 12, "frequency_hz": 2.0 },
+          "zipline": { "amplitude_deg": 8.5, "frequency_hz": 1.7 }
+        },
+        "envelope": {
+          "amplitude_attack_tau_sec": 0.15,
+          "frequency_tau_sec": 0.2,
+          "to_idle_release_tau_sec": 0.02
+        },
+        "jump": { "enabled": false, "mode": "off" },
+        "native_amplify": { "factor": 2 }
+      }
+    }
+  }
 }
 ```
 
-注意：
-- `amplitude_scale` 与骨型家族默认缩放（xiong=0.4）**相乘**。
-- `bones.right/left` 显式指定时**优先**于候选表。
-- jump 的 `landing_damped` 就是基线简化版（仅 land clip，阻尼衰减）。
-- default.json 中 jump 保留 `enabled=true + landing_damped` 以与基线行为一致；产品建议 `false`。
+DB 规则：
 
-### unknown_character
+- key 必须是稳定 `chr_id`；显示名不参与 Runtime identity。
+- `bones.right/left` 必须同时为空或同时存在。
+- 显式骨骼优先；`allow_fallback_candidates` 决定失败后是否用候选表。
+- `axis.name` 只接受 X/Y/Z；`sign` 只接受精确 -1/+1。
+- `animation_rules` gait 只接受 walk/run/sprint/zipline，最多 16 条。
+- `defaults` 为该角色没有 preset override 时的基础值。
+- Developer Save 重写已有角色时保留已有 `animation_rules`。
+
+## 4. preset
 
 ```json
-"unknown_character": { "enabled": false }
+{
+  "schema_version": 1,
+  "name": "Default",
+  "characters": {
+    "chr_0014_aurora": {
+      "enabled": true,
+      "motion_mode": "synthetic",
+      "axis": { "name": "Z", "sign": 1 },
+      "gait": {
+        "idle":    { "amplitude_deg": 0,  "frequency_hz": 1.2 },
+        "walk":    { "amplitude_deg": 20, "amplitude_down_deg": 20, "frequency_hz": 1.7 },
+        "run":     { "amplitude_deg": 30, "amplitude_down_deg": 35, "frequency_hz": 2.7 },
+        "sprint":  { "amplitude_deg": 45, "amplitude_down_deg": 45, "frequency_hz": 3.4 },
+        "zipline": { "amplitude_deg": 15, "amplitude_down_deg": 10, "frequency_hz": 3.0 }
+      },
+      "envelope": {
+        "amplitude_attack_tau_sec": 0.5,
+        "frequency_tau_sec": 0.2,
+        "to_idle_release_tau_sec": 0.7
+      },
+      "jump": {
+        "enabled": false,
+        "mode": "off"
+      },
+      "native_amplify": { "factor": 2 }
+    }
+  }
+}
 ```
-V1 固定 fail-closed：未在 `characters` 中配置的角色 → 原生动画，不写骨骼。
 
-## 单位
+### motion_mode
 
-角度一律 **degree**，频率 **Hz**，时间 **second**。运行时自动转换，用户不填 rad。
+只接受：
 
-## 校验规则（启动时）
+```text
+off / synthetic / amplify_native
+```
 
-schema_version、preset 名、骨名对、轴 X/Y/Z、sign ±1、浮点有限、freq>0、tau>0、
-amplitude_scale>=0、amplify factor>0、jump mode 已知、motion mode 已知。
-**单个角色校验失败 → 该角色禁用 + 日志，其他角色继续，插件不崩。**
+### gait
 
-## 行为开关：legacy_marker_mode
+五个 gait：
 
-- `true`（默认，= 基线）：`spring_test.txt` 存在才执行 synthetic 写回；
-  `amplify_test.txt` 存在才执行 amplify_native。与旧版完全一致。
-- `false`：完全由配置决定（enabled 角色即生效）。marker 仍可在 worker
-  低频检测日志中看到，但不再门控。
+```text
+idle / walk / run / sprint / zipline
+```
 
-marker 目录：`E:/GAMU/Hypergryph Launcher/games/Endfield Game/plugin/`
-（与基线相同；诊断 marker：bone_scan_test.txt / clip_inspect_test.txt /
-axis_test.txt / record_test.txt）。
+每项：
+
+- `amplitude_deg`：Up；
+- `amplitude_down_deg`：Down，缺失或 0 表示与 Up 对称；
+- `frequency_hz`：Hz。
+
+### envelope
+
+- `amplitude_attack_tau_sec`：幅度进入/变化时间常数；
+- `frequency_tau_sec`：频率变化时间常数；
+- `to_idle_release_tau_sec`：明确 locomotion stop/to-idle 的释放时间常数。
+
+### jump
+
+```text
+mode = off | landing_damped
+```
+
+`landing_damped` 可使用 `amplitude_deg`、`damping_tau_sec`、`frequency_hz`、`max_duration_sec`。产品数据当前默认 Jump disabled。
+
+Jump disabled 时不仅角度目标归零，还会阻止 Compose、SetLocalRotation 和 replay。
+
+### native_amplify
+
+`factor` 是 quaternion delta 的幂放大 K，必须 finite 且大于 0。
+
+## 5. 已删除字段
+
+现行 DB/preset/Manager/Runtime 均不使用：
+
+```text
+bone_scale
+amplitude_scale
+party_compensation
+four_member_factor
+```
+
+不同角色的视觉幅度完全由各自五个 gait 的 Up/Down 决定。旧文件即使含有 scale 字段，当前 loader 也不会读取或应用。
+
+## 6. 热重载与 Apply
+
+Manager Apply：
+
+```text
+PresetService.Write(tool copy)
+→ PresetService.SyncMirror(game copy)
+→ ConfigService.Write(revision + 1)
+→ Runtime rebuilds complete snapshot
+→ runtime_status.applied_revision ACK
+```
+
+Runtime 约 250 ms 轮询 `runtime/config.json`。只有 revision 变化才尝试新 snapshot；成功后 atomic swap，失败时：
+
+- 当前 active snapshot 不变；
+- `applied_revision` 不前进；
+- `[CFG]` 写详细字段原因；
+- `runtime_status.error` 写稳定摘要；
+- 修正同一 revision 的瞬时 malformed runtime config 后，status error 可恢复清除。
+
+## 7. 校验策略
+
+启动与 hot reload 共用同一 loader/final validator。
+
+### 字段缺失
+
+使用结构默认值或已有 profile 值；缺失本身不等于非法。
+
+### 字段存在但非法
+
+拒绝整个新 snapshot，不做“半套角色 override”。主要限制：
+
+- JSON root/nested block 类型正确；
+- DB/preset schema_version=1；
+- motion mode、jump mode、axis 枚举已知；
+- sign 精确 -1/+1；
+- 左右骨骼双空或双有；
+- runtime revision 为非负整数；
+- global interval 为正整数；
+- native factor >0；
+- animation rules 数量和 gait 映射合法。
+
+### amplitude / frequency / tau
+
+只要求 JSON number 且 finite，不设置产品上下界；Manager UI 也不额外截断这些数值。单位分别是 degree、Hz、second。
+
+## 8. 模板与更新
+
+正式包携带：
+
+```text
+data/characters.default.template.json
+presets/Default.template.json
+presets/User.template.json
+runtime/config.json
+```
+
+首次安装的 `CopyIfMissing` 只在游戏目录正式文件不存在时创建，不覆盖已有数据。Runtime DLL 和 proxy loader 属于代码产物，更新时允许覆盖并保留备份。
+
+Manager 的 preset 列表只显示名称通过 Runtime 路径安全规则且正式文件存在的 preset；`*.template.json` 永远不作为可选 preset。旧版本若已经把 `Default.template` 或其他非法/丢失名称写入 `active_preset`，新版 Manager startup 会在正式 `Default.json` 存在时保留 enabled、revision+1 并恢复到 `Default`。如果游戏已经因 initial config invalid 进入 `DISABLED_SAFE`，修复 config 后仍需重启游戏，因为该次 startup 尚未安装 Runtime hooks。
+
+用户采用“删除旧工具文件夹后解压新工具”的更新方式时，新的工具代码/模板会替换旧工具内容；游戏目录现有 DB/preset 的长期 merge/source-of-truth 规则仍需单独定义，不能从模板行为推断为自动覆盖。

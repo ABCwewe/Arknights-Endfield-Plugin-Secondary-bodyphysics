@@ -1,6 +1,6 @@
 #pragma once
 // character/bone_resolver.h — breast bone discovery from the Animator root
-// and per-bone-family axis/scale selection (baseline candidate table +
+// and per-bone-family axis selection (baseline candidate table +
 // SetBreastAxisByName semantics).  Architecture spec §8.
 #include <cstring>
 #include "../common/logger.h"
@@ -25,21 +25,14 @@ struct BoneResolution {
   char rightName[128] = {0};
   char leftName[128] = {0};
   Axis axis = Axis::Z;      // per-family (baseline SetBreastAxisByName)
-  float ampScale = 1.0f;
   bool found = false;
 };
 
-// Axis/scale by bone family (baseline semantics):
-//   xiong_* -> Y front-back sway, 0.4 scale (tip skin bone lever arm)
-//   others  -> Z, 1.0
-static void ApplyBoneFamilyDefaults(BoneResolution &res, const char *rightName) {
-  if (rightName && strstr(rightName, "xiong")) {
-    res.axis = Axis::Y;
-    res.ampScale = 0.4f;
-  } else {
-    res.axis = Axis::Z;
-    res.ampScale = 1.0f;
-  }
+// Axis by bone family:
+//   xiong_* -> Y front-back sway
+//   others  -> Z
+static void ApplyBoneFamilyAxis(BoneResolution &res, const char *rightName) {
+  res.axis = rightName && strstr(rightName, "xiong") ? Axis::Y : Axis::Z;
 }
 
 // Search the whole candidate table under root.  Returns false when no pair
@@ -55,11 +48,11 @@ static bool ResolveBreastBones(void *rootTransform, BoneResolution &out,
       out.breastL = l;
       SafeGetObjectName(r, out.rightName, sizeof(out.rightName));
       SafeGetObjectName(l, out.leftName, sizeof(out.leftName));
-      ApplyBoneFamilyDefaults(out, out.rightName);
+      ApplyBoneFamilyAxis(out, out.rightName);
       out.found = true;
       if (logFound)
-        ProbeLog("[BONE] FOUND pattern[%d] R=\"%s\" L=\"%s\" axis=%d scale=%.2f\n",
-                 i, out.rightName, out.leftName, (int)out.axis, out.ampScale);
+        ProbeLog("[BONE] FOUND pattern[%d] R=\"%s\" L=\"%s\" axis=%d\n",
+                 i, out.rightName, out.leftName, (int)out.axis);
       return true;
     }
   }
@@ -82,7 +75,6 @@ static bool ResolveBreastBonesWithProfile(void *rootTransform,
       SafeGetObjectName(r, out.rightName, sizeof(out.rightName));
       SafeGetObjectName(l, out.leftName, sizeof(out.leftName));
       out.axis = profile.axis.axis;
-      out.ampScale = profile.amplitudeScale;
       out.found = true;
       ProbeLog("[BONE] FOUND explicit R=\"%s\" L=\"%s\"\n",
                out.rightName, out.leftName);

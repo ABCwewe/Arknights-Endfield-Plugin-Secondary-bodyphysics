@@ -1,9 +1,10 @@
 #pragma once
-// config/config_types.h — immutable config snapshot + character profiles.
-// V1: loaded once at startup, restart-only reload.  No runtime mutation.
+// config/config_types.h — immutable config snapshots. Startup and hot reload
+// both build a fresh snapshot; runtime readers only observe atomic swaps.
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 enum class MotionMode {
   Off = 0,
@@ -52,15 +53,34 @@ struct EnvelopeConfig {
 
 struct JumpConfig {
   bool enabled = false;
-  std::string mode = "off";      // V1: off | landing_damped
-  float amplitudeDeg = 10.0f;    // landing_damped params (baseline values)
-  float dampingTauSec = 0.3f;
-  float frequencyHz = 1.5f;
-  float maxDurationSec = 1.2f;
+  std::string mode = "off";      // off | landing_damped
+  // Phase-E visual tuning. These defaults are the user-validated Liino
+  // source-space range; final visible deformation is character dependent.
+  float amplitudeDeg = 23.333f;  // landing shake amplitude
+  float dampingTauSec = 0.35f;   // landing shake exponential decay tau
+  float frequencyHz = 3.0f;      // landing shake carrier frequency
+  float maxDurationSec = 1.20f;  // landing shake duration
+  float takeoffDelaySec = 0.08f;
+  float risingTargetDeg = -23.333f;
+  float apexFallingTargetDeg = 23.333f;
+  float accelerationResponse = 0.1667f;
+  float accelerationFilterTauSec = 0.08f;
+  float naturalFrequencyHz = 2.2f;
+  float dampingRatio = 0.52f;
+  float landingImpulseGain = 6.667f;
 };
 
 struct NativeAmplifyConfig {
   float factor = 2.0f;           // K exponent (baseline g_ampK)
+};
+
+// Optional per-character locomotion whitelist extension. `contains` is a
+// clip-name fragment loaded once into the immutable config snapshot; runtime
+// classification only performs an in-memory comparison at the existing 20Hz
+// gait sample. Unknown clips remain native unless a character opts them in.
+struct AnimationRule {
+  std::string contains;
+  int gait = GaitNone;
 };
 
 // axisExplicit=true  -> use AxisConfig as-is (preset overrides family)
@@ -73,9 +93,6 @@ struct CharacterProfile {
   BoneConfig bones;
   AxisConfig axis;
   bool axisExplicit = false;   // set by ConfigLoader when "axis" key present
-  float amplitudeScale = 1.0f; // EXTRA scale on top of the bone-family
-                               // default (xiong family already includes 0.4;
-                               // leave at 1.0 unless fine-tuning a character)
 
   GaitParam idle;    // amplitudeDeg 0.0  / 1.2 Hz
   GaitParam walk;    // 3.6 / 1.5
@@ -87,18 +104,10 @@ struct CharacterProfile {
   EnvelopeConfig envelope;
   JumpConfig jump;
   NativeAmplifyConfig nativeAmplify;
-};
-
-struct PartyCompensationConfig {
-  bool enabled = true;
-  std::string strategy = "legacy_four_stack";
-  float fourMemberFactor = 0.25f;   // legacy V1 factor (kept for compat)
-  float transitionTauSec = 0.15f;   // smoothing into/out of stack state
-  float alpha = 1.0f;               // V2 formula: factor = 1/(1+a*(N-1))
+  std::vector<AnimationRule> animationRules;  // DB-owned special movement clips
 };
 
 struct GlobalConfig {
-  PartyCompensationConfig partyCompensation;
   uint32_t gaitSampleIntervalMs = 50;    // 20 Hz
   uint32_t entityRefreshIntervalMs = 500;
   uint32_t replayVerifyWindowMs = 150;
@@ -121,18 +130,3 @@ struct ConfigSnapshot {
   uint64_t contentHash = 0;
   bool valid = false;
 };
-
-// Known bone-family defaults (architecture spec §28):
-//   breast_*    -> Z, scale 1.0
-//   R/L_breast_* -> Z, scale 1.0
-//   xiong_*     -> Y, scale 0.4
-struct BoneFamilyDefaults {
-  Axis axis;
-  float scale;
-};
-
-static BoneFamilyDefaults BoneFamilyDefaultByName(const char *boneName) {
-  if (boneName && strstr(boneName, "xiong"))
-    return {Axis::Y, 0.4f};
-  return {Axis::Z, 1.0f};
-}

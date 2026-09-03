@@ -5,6 +5,7 @@
 #include <cstring>
 #include "../common/logger.h"
 #include "../config/config_loader.h"  // ConfigSnapshot (profile binding)
+#include "../motion/jump_live_signal.h"
 #include "bone_resolver.h"
 #include "character_identity.h"
 
@@ -13,6 +14,8 @@ struct SyntheticRuntime {
   float freqEnv = 1.5f;
   double phase = 0.0;
   double lastAdvanceTime = 0.0;
+  bool wasGroundLocomotionMoving = false;
+  bool locomotionOnsetActive = false;
   float outAngleRad = 0.0f;
   Quat lastNativeR = QuatIdentity();
   Quat lastNativeL = QuatIdentity();
@@ -45,7 +48,6 @@ struct ActiveCharacterRuntime {
   BoneResolution bones;
   Axis axis = Axis::Z;
   float axisSign = 1.0f;
-  float boneAmplitudeScale = 1.0f;
 
   int currentGait = -1;           // Gait enum
   bool transitionToIdle = false;
@@ -57,6 +59,7 @@ struct ActiveCharacterRuntime {
 
   SyntheticRuntime synthetic;
   JumpRuntime jump;
+  JumpLiveSignal jumpSignal;
   ReplayRuntime replay;
 };
 
@@ -72,7 +75,6 @@ static void ResetActiveCharacter(ActiveCharacterRuntime &c) {
   c.bones = BoneResolution();
   c.axis = Axis::Z;
   c.axisSign = 1.0f;
-  c.boneAmplitudeScale = 1.0f;
   c.currentGait = -1;
   c.transitionToIdle = false;
   c.jumpActive = false;
@@ -80,6 +82,7 @@ static void ResetActiveCharacter(ActiveCharacterRuntime &c) {
   c.lastGaitSampleMs = 0;
   c.synthetic = SyntheticRuntime();
   c.jump = JumpRuntime();
+  c.jumpSignal = JumpLiveSignal();
   c.replay = ReplayRuntime();
 }
 

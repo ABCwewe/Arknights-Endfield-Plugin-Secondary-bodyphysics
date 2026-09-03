@@ -289,12 +289,12 @@
                                  Height="30" Margin="4"
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
-                                 Text="{Binding Current.ZiplineDown, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                                 Text="{Binding Current.ZiplineAmp, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                         <TextBox Grid.Row="4" Grid.Column="2"
                                  Height="30" Margin="4"
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
-                                 Text="{Binding Current.ZiplineAmp, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                                 Text="{Binding Current.ZiplineDown, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                         <TextBox Grid.Row="4" Grid.Column="3"
                                  Height="30" Margin="4"
                                  VerticalContentAlignment="Center"
@@ -324,7 +324,6 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="38" />
                             <RowDefinition Height="38" />
-                            <RowDefinition Height="38" />
                             <RowDefinition Height="52" />
                             <RowDefinition Height="52" />
                             <RowDefinition Height="58" />
@@ -332,18 +331,9 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0"
-                                   Text="{DynamicResource M_amplitude_scale}"
-                                   Style="{StaticResource FieldLabel}" />
-                        <TextBox Grid.Row="0" Grid.Column="1"
-                                 Height="30"
-                                 VerticalContentAlignment="Center"
-                                 TextAlignment="Right"
-                                 Text="{Binding Current.AmpScale, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
-
-                        <TextBlock Grid.Row="1" Grid.Column="0"
                                    Text="{DynamicResource M_axis}"
                                    Style="{StaticResource FieldLabel}" />
-                        <ComboBox Grid.Row="1" Grid.Column="1"
+                        <ComboBox Grid.Row="0" Grid.Column="1"
                                   Height="30"
                                   SelectedIndex="{Binding Current.AxisIndex}">
                             <ComboBoxItem Content="{DynamicResource M_auto}" />
@@ -352,10 +342,10 @@
                             <ComboBoxItem Content="{DynamicResource M_z}" />
                         </ComboBox>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0"
+                        <TextBlock Grid.Row="1" Grid.Column="0"
                                    Text="{DynamicResource M_direction}"
                                    Style="{StaticResource FieldLabel}" />
-                        <ComboBox Grid.Row="2" Grid.Column="1"
+                        <ComboBox Grid.Row="1" Grid.Column="1"
                                   Height="30"
                                   SelectedIndex="{Binding Current.SignIndex}">
                             <ComboBoxItem Content="{DynamicResource M_x_2}" />
@@ -363,7 +353,7 @@
                         </ComboBox>
 
                         <!-- Env attack tau -->
-                        <StackPanel Grid.Row="3" Grid.Column="0"
+                        <StackPanel Grid.Row="2" Grid.Column="0"
                                     VerticalAlignment="Center"
                                     ToolTip="{DynamicResource M_env_attack_tau_smooths_amplitude_acr}">
                             <TextBlock Text="{DynamicResource M_transition_smoothing}"
@@ -371,7 +361,7 @@
                             <TextBlock Text="{DynamicResource M_higher_for_motions_to_motions_smooth}"
                                        Style="{StaticResource AdvancedParamHint}" />
                         </StackPanel>
-                        <TextBox Grid.Row="3" Grid.Column="1"
+                        <TextBox Grid.Row="2" Grid.Column="1"
                                  Height="30"
                                  VerticalAlignment="Center"
                                  VerticalContentAlignment="Center"
@@ -380,7 +370,7 @@
                                  Text="{Binding Current.EnvAttack, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                         <!-- Env freq tau -->
-                        <StackPanel Grid.Row="4" Grid.Column="0"
+                        <StackPanel Grid.Row="3" Grid.Column="0"
                                     VerticalAlignment="Center"
                                     ToolTip="{DynamicResource M_env_freq_tau_smooths_changes_in_moti}">
                             <TextBlock Text="{DynamicResource M_frequency_smoothing}"
@@ -388,7 +378,7 @@
                             <TextBlock Text="{DynamicResource M_higher_slower_frequency_changes_lowe}"
                                        Style="{StaticResource AdvancedParamHint}" />
                         </StackPanel>
-                        <TextBox Grid.Row="4" Grid.Column="1"
+                        <TextBox Grid.Row="3" Grid.Column="1"
                                  Height="30"
                                  VerticalAlignment="Center"
                                  VerticalContentAlignment="Center"
@@ -397,7 +387,7 @@
                                  Text="{Binding Current.EnvFreq, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                         <!-- Env to-idle tau -->
-                        <StackPanel Grid.Row="5" Grid.Column="0"
+                        <StackPanel Grid.Row="4" Grid.Column="0"
                                     VerticalAlignment="Center"
                                     ToolTip="{DynamicResource M_env_to_idle_tau_dedicated_stop_tail_}">
                             <TextBlock Text="{DynamicResource M_stop_smoothing}"
@@ -405,7 +395,7 @@
                             <TextBlock Text="{DynamicResource M_for_motions_to_stop_higher_gentler_s}"
                                        Style="{StaticResource AdvancedParamHint}" />
                         </StackPanel>
-                        <TextBox Grid.Row="5" Grid.Column="1"
+                        <TextBox Grid.Row="4" Grid.Column="1"
                                  Height="30"
                                  VerticalAlignment="Center"
                                  VerticalContentAlignment="Center"
@@ -413,20 +403,132 @@
                                  ToolTip="{DynamicResource M_env_to_idle_tau_clips_containing_quo}"
                                  Text="{Binding Current.EnvIdle, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
-                        <TextBlock Grid.Row="6" Grid.Column="0"
+                        <TextBlock Grid.Row="5" Grid.Column="0"
                                    Text="{DynamicResource M_native_amplify}"
                                    Style="{StaticResource FieldLabel}" />
-                        <TextBox Grid.Row="6" Grid.Column="1"
+                        <TextBox Grid.Row="5" Grid.Column="1"
                                  Height="30"
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
                                  Text="{Binding Current.NativeFactor, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
                     </Grid>
 
-                    <CheckBox Content="{DynamicResource M_jump_legacy_landing_damped}"
-                              Margin="0,12,0,0"
-                              Foreground="Black"
-                              IsChecked="{Binding Current.JumpEnabled}" />
+                    <!-- Jump/Inertia tuning lives only on Main -> Advanced. -->
+                    <Border Background="{StaticResource SoftFillBrush}"
+                            BorderBrush="#DCE6EF"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12"
+                            Margin="0,16,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="{DynamicResource M_jump_inertia}"
+                                           Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="{DynamicResource M_jump_inertia_hint}"
+                                           Style="{StaticResource SectionHintStyle}" />
+                            </StackPanel>
+                            <CheckBox Content="{DynamicResource M_jump_enabled}"
+                                      Foreground="Black"
+                                      IsChecked="{Binding Current.JumpEnabled}" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="350" />
+                                    <ColumnDefinition Width="230" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="52" />
+                                    <RowDefinition Height="88" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_rising_target}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_rising_target_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <Grid Grid.Row="0" Grid.Column="1" Width="110" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="20" />
+                                        <ColumnDefinition Width="90" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="−" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Height="30" Margin="4" VerticalContentAlignment="Center" TextAlignment="Right"
+                                             Text="{Binding Current.JumpRisingMagnitude, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                                </Grid>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_apex_falling_target}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_apex_falling_target_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="1" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpApexFallingTarget, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="2" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_acceleration_response}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_acceleration_response_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="2" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpAccelerationResponse, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="3" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_natural_frequency}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_natural_frequency_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="3" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpNaturalFrequency, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_damping_ratio}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_damping_ratio_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="4" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpDampingRatio, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="5" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_landing_impulse_gain}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_landing_impulse_gain_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="5" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpLandingImpulseGain, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="6" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_landing_shake_amplitude}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_landing_shake_amplitude_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <TextBox Grid.Row="6" Grid.Column="1" Width="110" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         Text="{Binding Current.JumpAmplitude, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+
+                                <StackPanel Grid.Row="7" Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{DynamicResource M_jump_shake_preset}" Style="{StaticResource AdvancedParamTitle}" />
+                                    <TextBlock Text="{DynamicResource M_jump_shake_preset_hint}" Style="{StaticResource AdvancedParamHint}" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="7" Grid.Column="1" VerticalAlignment="Center">
+                                    <Slider Minimum="0" Maximum="4" TickFrequency="1"
+                                            IsSnapToTickEnabled="True" TickPlacement="BottomRight"
+                                            Value="{Binding Current.JumpShakePresetIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <UniformGrid Columns="5" Margin="4,0,4,0">
+                                        <TextBlock Text="1" FontSize="8" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Left" />
+                                        <TextBlock Text="2" FontSize="8" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="3" FontSize="8" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="4" FontSize="8" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="5" FontSize="8" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" />
+                                    </UniformGrid>
+                                    <TextBlock Text="{Binding Current.JumpShakePresetSummary}" FontSize="8"
+                                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 

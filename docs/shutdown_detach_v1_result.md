@@ -52,3 +52,40 @@ detach 后 worker 退化为普通 Win32 线程，IL2CPP teardown 不再依赖它
 3. 遗留项（不影响进程退出，V2 再议）：DLL_PROCESS_DETACH 无清理
    （hook 不卸载 / 日志不关 / 锁不销毁）。若未来支持游戏内卸载 DLL，
    必须先 MH_DisableHook + worker 退出后再 FreeLibrary，顺序不能反。
+
+---
+
+## 当前实现状态（2026-08-23）
+
+以上正文是 2026-08-17 的历史单点实验记录；其中 source/DLL hash、备份文件名和“其余代码零改动”只描述当时实验版本，不能用于识别当前工作树或当前发布包。
+
+现行 `src/plugin/plugin_main.h` 仍保留并正式使用：
+
+```text
+worker attach IL2CPP
+→ PluginStartup 完成需要 IL2CPP 的初始化
+→ il2cpp_thread_detach
+→ detached Win32 service loop
+```
+
+当前 detached service loop 已扩展为：
+
+- `developer_command.json` 轮询和 plain command state；
+- `runtime/config.json` hot reload；
+- `runtime_status.json` 写入；
+- legacy marker cache；
+- diagnostics flag/latch；
+- discovered-character flush；
+- Sleep。
+
+需要 Unity/IL2CPP 对象的工作仍通过 main-thread hook 执行：Animator clip 读取、Transform 遍历、axis write、bone scan、recorder frame capture 都不在 detached worker 中直接调用。
+
+当前 shutdown 结论保持：
+
+1. worker 不能在永久 attached 状态进入无限服务循环；
+2. detached 后不得直接执行 Unity/IL2CPP API；
+3. 项目当前不是可热卸载 DLL：worker 仍为 `while(true)`，没有 cooperative stop；
+4. `DLL_PROCESS_DETACH` 仍未实现完整 hook disable、worker join、日志/锁销毁；
+5. 如果未来实现游戏内卸载，必须把它作为新的生命周期工程处理，不能把本实验的“正常退出”直接等同于“安全 FreeLibrary”。
+
+本轮只进行了静态边界核对、109 项自动回归和 Runtime build；没有重新部署，也没有执行新的游戏退出实测。因此历史 PASS 仍是该实验的实测证据，本节只说明当前代码继续沿用其生命周期模式。

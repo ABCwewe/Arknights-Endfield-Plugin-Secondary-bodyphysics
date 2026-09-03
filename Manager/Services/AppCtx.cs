@@ -45,6 +45,7 @@ public class AppCtx {
         ById = new Dictionary<string, CharacterData>();
         foreach (var c in Characters) ById[c.Id] = c;
         Config.Load();
+        Config.RecoverInvalidActivePreset(Presets);
         Presets.LoadInto(Config.ActivePreset, Characters, ById, false);
         return Db.Loaded || Characters.Count > 0;
     }
@@ -135,9 +136,16 @@ public class AppCtx {
         for (int i = 0; i < 5; i++)
             g += (i == 0 ? "" : " ") + c.Amp[i] + "/" + c.AmpDown[i] + "/" + c.Freq[i];
         return "en=" + (c.Enabled ? 1 : 0) + " mo=" + c.Mode + " ax=" + c.Axis +
-               (c.AxisSign < 0 ? "-" : "+") + " sc=" + c.AmpScale + " ga=[" + g + "]" +
+               (c.AxisSign < 0 ? "-" : "+") + " ga=[" + g + "]" +
                " env=" + c.EnvAttack + "/" + c.EnvFreq + "/" + c.EnvIdle +
-               " nat=" + c.NativeFactor + " jmp=" + (c.JumpEnabled ? 1 : 0);
+               " nat=" + c.NativeFactor + " jmp=" + (c.JumpEnabled ? 1 : 0) +
+               "/" + c.JumpAmplitude + "/" + c.JumpDampingTau +
+               "/" + c.JumpFrequency + "/" + c.JumpMaxDuration +
+               "/" + c.JumpTakeoffDelay + "/" + c.JumpRisingTarget +
+               "/" + c.JumpApexFallingTarget + "/" +
+               c.JumpAccelerationResponse + "/" + c.JumpAccelerationFilterTau +
+               "/" + c.JumpNaturalFrequency + "/" + c.JumpDampingRatio +
+               "/" + c.JumpLandingImpulseGain;
     }
 
     static string DiffText(Dictionary<string, string> before,
@@ -198,6 +206,10 @@ public class AppCtx {
 
     // ---- preset CRUD helpers used by PresetsViewModel ----
     public void SwitchPreset(string name) {
+        if (!Presets.IsSelectablePreset(name)) {
+            ChangeLog.Append("[Preset] rejected switch to invalid/missing preset: " + name);
+            return;
+        }
         // load the target preset over the DB, then apply it
         Characters = Db.Load();
         ById = new Dictionary<string, CharacterData>();

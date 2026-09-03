@@ -2,7 +2,9 @@
 // (atomic, revision+1 each write).  The runtime worker parses it and only
 // consumes plain command state; no direct IL2CPP interaction.
 using System;
+using System.IO;
 using System.Text;
+using System.Text.Json;
 
 namespace SecondaryMotion.Manager.Services;
 
@@ -11,7 +13,16 @@ public class DevCommandService {
     int _revision = 0;
 
     public DevCommandService(string baseDir) {
-        _path = System.IO.Path.Combine(baseDir, "runtime", "developer_command.json");
+        _path = Path.Combine(baseDir, "runtime", "developer_command.json");
+        try {
+            if (!File.Exists(_path)) return;
+            using var doc = JsonDocument.Parse(File.ReadAllText(_path));
+            if (doc.RootElement.TryGetProperty("revision", out var revision) &&
+                revision.TryGetInt32(out int value) && value > _revision)
+                _revision = value;
+        } catch (Exception ex) {
+            ChangeLog.Append("[Developer] existing command revision unreadable; starting at 0: " + ex.Message);
+        }
     }
 
     public void Clear() => Write("none");

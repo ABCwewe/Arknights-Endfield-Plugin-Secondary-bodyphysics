@@ -9,6 +9,32 @@
 #include "../common/time_utils.h"
 #include "../config/config_types.h"
 
+static constexpr float kLocomotionOnsetAttackTauSec = 0.10f;
+
+// Selects an internal fast attack only for a newly accepted ground-locomotion
+// epoch. State lives with ActiveCharacterRuntime so switch/reload resets it;
+// this parameter is deliberately not part of the user preset/UI schema.
+static float SelectLocomotionAttackTau(
+    bool groundMoving, float ampNow, float downNow, float ampTarget,
+    float downTarget, float normalAttackTau, bool &wasGroundMoving,
+    bool &onsetActive) {
+  if (!groundMoving) {
+    wasGroundMoving = false;
+    onsetActive = false;
+    return normalAttackTau;
+  }
+  if (!wasGroundMoving) onsetActive = true;
+  wasGroundMoving = true;
+  if (onsetActive) {
+    float ampTolerance = fmaxf(0.001f, fabsf(ampTarget) * 0.05f);
+    float downTolerance = fmaxf(0.001f, fabsf(downTarget) * 0.05f);
+    if (fabsf(ampTarget - ampNow) <= ampTolerance &&
+        fabsf(downTarget - downNow) <= downTolerance)
+      onsetActive = false;
+  }
+  return onsetActive ? kLocomotionOnsetAttackTauSec : normalAttackTau;
+}
+
 struct LocomotionEnvelope {
   float ampEnv = 0.0f;
   float downEnv = 0.0f;   // down-amplitude channel (asymmetric gait)

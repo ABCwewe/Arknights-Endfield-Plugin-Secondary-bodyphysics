@@ -9,9 +9,14 @@
 #include "src/config/json_mini.h"
 #include "src/config/config_types.h"
 #include "src/config/config_loader.h"
+#include "src/config/config_validator.h"
 #include "src/motion/gait_classifier.h"
 #include "src/motion/locomotion_envelope.h"
-#include "src/motion/party_compensator.h"
+#include "src/motion/jump_inertial_source.h"
+#include "src/runtime/dev_command.h"
+#include "src/diagnostics/bone_dump_json.h"
+#include "src/diagnostics/movement_signal_types.h"
+#include "src/diagnostics/jump_phase_a_probe.h"
 
 static int g_fail = 0;
 static int g_pass = 0;
@@ -58,12 +63,15 @@ static void TestDatabase() {
   CHECK("db aurora axis explicit Z",
         snap.characters["chr_0014_aurora"].axisExplicit &&
             snap.characters["chr_0014_aurora"].axis.axis == Axis::Z);
-  CHECK("db endminf scale 1.0 (family 0.4 automatic)",
-        Near(snap.characters["chr_0003_endminf"].amplitudeScale, 1.0f));
   CHECK("db aurora run 8.5",
         Near(snap.characters["chr_0014_aurora"].run.amplitudeDeg, 8.5f));
-  CHECK("db jump default off",
-        !snap.characters["chr_0014_aurora"].jump.enabled);
+  CHECK("db jump enabled for existing characters",
+        snap.characters["chr_0014_aurora"].jump.enabled);
+  CHECK("db jump carries validated Phase-E defaults",
+        Near(snap.characters["chr_0014_aurora"].jump.risingTargetDeg,
+             -23.333f, 0.001f) &&
+        Near(snap.characters["chr_0014_aurora"].jump.landingImpulseGain,
+             6.667f, 0.001f));
 
   // preset merge
   CHECK("preset apply", ApplyUserPreset("SecondaryMotion/presets/User.json",
@@ -79,6 +87,53 @@ static void TestDatabase() {
   ConfigSnapshot snap2;
   LoadCharacterDatabase("SecondaryMotion/data/characters.default.json", snap2);
   CHECK("unknown char absent", snap2.characters.count("chr_9999_xx") == 0);
+
+  // Character-owned extension whitelist is loaded from the technical DB,
+  // never from a user preset and never parsed in the animation callback.
+  const char *ruleDbPath = "verify_animation_rules.json";
+  FILE *ruleDb = fopen(ruleDbPath, "wb");
+  const char *ruleJson =
+      "{\"schema_version\":1,\"characters\":{\"chr_test\":{"
+      "\"animation_rules\":{"
+      "\"special_hop\":\"run\","
+      "\"special_dash\":\"sprint\","
+      "\"bad\":\"idle\"}}}}";
+  if (ruleDb) {
+    fwrite(ruleJson, 1, strlen(ruleJson), ruleDb);
+    fclose(ruleDb);
+  }
+  ConfigSnapshot ruleSnap;
+  bool ruleLoaded = LoadCharacterDatabase(ruleDbPath, ruleSnap);
+  remove(ruleDbPath);
+  CHECK("animation rules db load", ruleLoaded);
+  CHECK("animation rules parsed",
+        ruleLoaded && ruleSnap.characters.count("chr_test") == 1 &&
+            ruleSnap.characters.at("chr_test").animationRules.size() == 2);
+  if (ruleLoaded && ruleSnap.characters.count("chr_test") == 1 &&
+      ruleSnap.characters.at("chr_test").animationRules.size() == 2) {
+    const CharacterProfile &rp = ruleSnap.characters.at("chr_test");
+    CHECK("animation rule run mapping",
+          rp.animationRules[0].contains == "special_hop" &&
+              rp.animationRules[0].gait == GaitRun);
+    CHECK("animation rule sprint mapping",
+          rp.animationRules[1].contains == "special_dash" &&
+              rp.animationRules[1].gait == GaitSprint);
+  }
+
+  std::string tooManyJson = "{\"animation_rules\":{";
+  for (int i = 0; i < 17; ++i) {
+    if (i) tooManyJson += ",";
+    tooManyJson += "\"rule_" + std::to_string(i) + "\":\"run\"";
+  }
+  tooManyJson += "}}";
+  jsonmini::Value tooManyValue;
+  CharacterProfile tooManyProfile;
+  jsonmini::Parser tooManyParser;
+  tooManyParser.p = tooManyJson.c_str();
+  bool tooManyParsed = tooManyParser.ParseValue(tooManyValue);
+  if (tooManyParsed) ParseAnimationRules(tooManyValue, tooManyProfile);
+  CHECK("oversized animation rules rejected",
+        tooManyParsed && tooManyProfile.animationRules.empty());
 }
 
 // ---------- gait classifier ----------
@@ -87,7 +142,63 @@ static void TestGait() {
   CHECK("run loop -> 2", ClassifyClipName("A_actor_lady_run_loop") == 2);
   CHECK("sprint loop -> 3", ClassifyClipName("A_actor_girl_sprint_loop") == 3);
   CHECK("walk loop -> 1", ClassifyClipName("A_actor_girl_walk_loop") == 1);
-  CHECK("idle loop -> 0", ClassifyClipName("A_actor_girl_idle_loop") == 0);
+  CHECK("idle loop excluded", ClassifyClipName("A_actor_girl_idle_loop") == -1);
+  CHECK("relax loop excluded", ClassifyClipName("A_actor_zhuangfy_relax_loop") == -1);
+  CHECK("relax special excluded",
+        ClassifyClipName("A_actor_zhuangfy_relax_sp_01") == -1);
+  CHECK("generic skill start excluded",
+        ClassifyClipName("A_actor_lady_skill_start") == -1);
+  CHECK("generic battle stop excluded",
+        ClassifyClipName("A_actor_lady_battle_stop") == -1);
+  CHECK("generic attack transition excluded",
+        ClassifyClipName("A_actor_lady_attack_to_idle") == -1);
+  CHECK("unknown special excluded by default",
+        ClassifyClipName("A_actor_lossi_special_hop_loop") == -1);
+  CHECK("special containing run excluded by default",
+        ClassifyClipName("A_actor_future_special_run_hop") == GaitNone);
+  CHECK("dash containing sprint excluded by default",
+        ClassifyClipName("A_actor_future_sprint_dash_sp") == GaitNone);
+  CharacterProfile specialProfile;
+  AnimationRule specialRun;
+  specialRun.contains = "lossi_special_hop";
+  specialRun.gait = GaitRun;
+  specialProfile.animationRules.push_back(specialRun);
+  CHECK("character special rule opts clip into run",
+        ClassifyClipName("A_actor_lossi_special_hop_run_loop", &specialProfile) ==
+            GaitRun);
+  AnimationRule specialDash;
+  specialDash.contains = "special_dash";
+  specialDash.gait = GaitSprint;
+  specialProfile.animationRules.push_back(specialDash);
+  CHECK("character dash rule opts clip into sprint",
+        ClassifyClipName("A_actor_future_sprint_special_dash", &specialProfile) ==
+            GaitSprint);
+  CHECK("rules are character scoped",
+        ClassifyClipName("A_actor_future_special_dash") == GaitNone);
+  CharacterProfile overlapProfile;
+  AnimationRule broadDash;
+  broadDash.contains = "dash";
+  broadDash.gait = GaitWalk;
+  overlapProfile.animationRules.push_back(broadDash);
+  AnimationRule specificDash;
+  specificDash.contains = "special_dash";
+  specificDash.gait = GaitSprint;
+  overlapProfile.animationRules.push_back(specificDash);
+  CHECK("longest character rule wins",
+        ClassifyClipName("A_actor_future_special_dash", &overlapProfile) ==
+            GaitSprint);
+  CHECK("none is not write eligible", !IsLocomotionGait(GaitNone));
+  CHECK("idle is not write eligible", !IsLocomotionGait(GaitIdle));
+  CHECK("walk is write eligible", IsLocomotionGait(GaitWalk));
+  CHECK("run is write eligible", IsLocomotionGait(GaitRun));
+  CHECK("sprint is write eligible", IsLocomotionGait(GaitSprint));
+  CHECK("zipline is write eligible", IsLocomotionGait(GaitZipline));
+  CHECK("normal run can write",
+        CanWriteSynthetic(GaitRun, false, false));
+  CHECK("disabled jump cannot write",
+        !CanWriteSynthetic(GaitRun, true, false));
+  CHECK("enabled jump can write",
+        CanWriteSynthetic(GaitRun, true, true));
   CHECK("jump -> 2 (baseline)", ClassifyClipName("idle_jump_start_l") == 2);
   CHECK("run_stop -> 1", ClassifyClipName("run_stop_r") == 1);
   CHECK("sprint_stop -> 1", ClassifyClipName("sprint_stop_l") == 1);
@@ -98,10 +209,24 @@ static void TestGait() {
   CHECK("zipline start -> 4", ClassifyClipName("A_actor_lady_interact_zipline_start") == 4);
   CHECK("zipline slide -> 4", ClassifyClipName("A_actor_lady_interact_zipline_sp_02") == 4);
   CHECK("zipline stop -> 4", ClassifyClipName("A_actor_lady_interact_zipline_stop") == 4);
-  CHECK("unknown monster idle -> 0 (contains idle, baseline)",
-        ClassifyClipName("A_actor_monster_hound_idle") == 0);
+  CHECK("unknown monster idle excluded",
+        ClassifyClipName("A_actor_monster_hound_idle") == -1);
   GaitClassification c = ClassifyClipNameFull("run_stop_r");
   CHECK("stop -> toIdle flag", c.transitionToIdle);
+  GaitClassification excludedStop =
+      ClassifyClipNameFull("A_actor_lady_battle_stop");
+  CHECK("excluded stop has no transition flag",
+        excludedStop.gait == GaitNone && !excludedStop.transitionToIdle);
+  GaitClassification excludedToIdle =
+      ClassifyClipNameFull("A_actor_lady_attack_to_idle");
+  CHECK("excluded to-idle has no transition flag",
+        excludedToIdle.gait == GaitNone && !excludedToIdle.transitionToIdle);
+  GaitClassification excludedSpecialJump =
+      ClassifyClipNameFull("A_actor_future_special_jump_land");
+  CHECK("excluded special jump has no jump flags",
+        excludedSpecialJump.gait == GaitNone &&
+            !excludedSpecialJump.jumpDetected &&
+            !excludedSpecialJump.landingDetected);
   GaitClassification j = ClassifyClipNameFull("idle_jump_land_l");
   CHECK("land clip detected", j.landingDetected);
   GaitClassification i = ClassifyClipNameFull("idle_jump_start_l");
@@ -119,6 +244,41 @@ static void EnvAdvance(LocomotionEnvelope &env, float amp, float down,
 
 static void TestEnvelope() {
   printf("[ENVELOPE]\n");
+  CHECK("ground run is onset eligible",
+        IsGroundLocomotionOnsetEligible(GaitRun, false, false));
+  CHECK("zipline is not onset eligible",
+        !IsGroundLocomotionOnsetEligible(GaitZipline, false, false));
+  CHECK("stop is not onset eligible",
+        !IsGroundLocomotionOnsetEligible(GaitWalk, true, false));
+  CHECK("jump-mapped run is not onset eligible",
+        !IsGroundLocomotionOnsetEligible(GaitRun, false, true));
+  bool wasGroundMoving = false;
+  bool onsetActive = false;
+  float onsetTau = SelectLocomotionAttackTau(
+      true, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+      wasGroundMoving, onsetActive);
+  CHECK("first ground movement uses internal 0.10s onset tau",
+        Near(onsetTau, 0.10f) && wasGroundMoving && onsetActive);
+  float settledTau = SelectLocomotionAttackTau(
+      true, 0.96f, 0.96f, 1.0f, 1.0f, 1.0f,
+      wasGroundMoving, onsetActive);
+  CHECK("onset exits near 95 percent target",
+        Near(settledTau, 1.0f) && wasGroundMoving && !onsetActive);
+  float upgradeTau = SelectLocomotionAttackTau(
+      true, 1.0f, 1.0f, 2.0f, 2.0f, 1.0f,
+      wasGroundMoving, onsetActive);
+  CHECK("moving gait upgrade keeps normal attack tau",
+        Near(upgradeTau, 1.0f) && !onsetActive);
+  float stoppedTau = SelectLocomotionAttackTau(
+      false, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+      wasGroundMoving, onsetActive);
+  CHECK("stop disarms onset epoch",
+        Near(stoppedTau, 1.0f) && !wasGroundMoving && !onsetActive);
+  float restartTau = SelectLocomotionAttackTau(
+      true, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+      wasGroundMoving, onsetActive);
+  CHECK("new ground movement rearms onset",
+        Near(restartTau, 0.10f) && wasGroundMoving && onsetActive);
   LocomotionEnvelope env;
   // run target: 8.5 deg -> rad 0.1484
   float target = DegToRad(8.5f);
@@ -176,34 +336,6 @@ static void TestQuat() {
   CHECK("slerp 1 = b", Near(QuatSlerp(a, id, 1.0f).w, 1.0f));
 }
 
-// ---------- compensation formula ----------
-static void TestCompensation() {
-  printf("[COMPENSATION]\n");
-  PartyCompensationConfig cfg;
-  cfg.enabled = true;
-  cfg.alpha = 1.0f;
-  cfg.transitionTauSec = 0.001f;  // near-instant ease for the test
-  LegacyCallbackStackCompensation comp;
-  // repeated calls to converge (ease with tiny tau)
-  float f1 = 0, f2 = 0, f3 = 0, f4 = 0;
-  for (int i = 0; i < 60; i++) {
-    f1 = comp.GetFactor(cfg, 1);
-    f2 = comp.GetFactor(cfg, 2);
-    f3 = comp.GetFactor(cfg, 3);
-    f4 = comp.GetFactor(cfg, 4);
-  }
-  CHECK("N=1 -> 1.0", Near(f1, 1.0f, 1e-2f));
-  CHECK("N=2 -> 1.0 (scene NPCs do NOT compress)", Near(f2, 1.0f, 1e-2f));
-  CHECK("N=3 -> 1.0 (scene NPCs do NOT compress)", Near(f3, 1.0f, 1e-2f));
-  CHECK("N=4 -> 0.25 (real party)", Near(f4, 0.25f, 1e-2f));
-  cfg.alpha = 0.0f;
-  for (int i = 0; i < 60; i++) f4 = comp.GetFactor(cfg, 4);
-  CHECK("alpha=0 -> 1.0", Near(f4, 1.0f, 1e-2f));
-  cfg.enabled = false;
-  for (int i = 0; i < 60; i++) f4 = comp.GetFactor(cfg, 4);
-  CHECK("disabled -> 1.0", Near(f4, 1.0f, 1e-2f));
-}
-
 // ---------- hot reload ----------
 static void TestHotReload() {
   printf("[HOT-RELOAD]\n");
@@ -230,6 +362,670 @@ static void TestHotReload() {
   CHECK("same revision no-op", !ConfigReloadIfChanged(7));
 }
 
+static void TestConfigValidation() {
+  printf("[CONFIG-VALIDATION]\n");
+  const char *text =
+      "{\"gait\":{\"run\":{\"amplitude_deg\":-500,"
+      "\"frequency_hz\":-7}},\"envelope\":{"
+      "\"amplitude_attack_tau_sec\":-0.2,"
+      "\"frequency_tau_sec\":0,"
+      "\"to_idle_release_tau_sec\":99}}";
+  jsonmini::Parser parser;
+  parser.p = text;
+  jsonmini::Value value;
+  CharacterProfile profile;
+  CHECK("finite amplitude/frequency/tau have no range limits",
+        parser.ParseValue(value) && ParseParamBlock(value, profile));
+
+  MotionMode mode = MotionMode::Off;
+  Axis axis = Axis::Z;
+  CHECK("known motion mode accepted",
+        ParseMotionModeStrict("synthetic", mode) &&
+            mode == MotionMode::Synthetic);
+  CHECK("unknown motion mode rejected", !ParseMotionModeStrict("bad", mode));
+  CHECK("known axis accepted", ParseAxisStrict("Y", axis) && axis == Axis::Y);
+  CHECK("unknown axis rejected", !ParseAxisStrict("Q", axis));
+  CHECK("axis sign accepts exact +/-1",
+        IsValidAxisSign(1.0) && IsValidAxisSign(-1.0));
+  CHECK("axis sign rejects other values", !IsValidAxisSign(0.0));
+  CHECK("bone pair allows both empty", HasCompleteBonePair("", ""));
+  CHECK("bone pair allows both present", HasCompleteBonePair("R", "L"));
+  CHECK("bone pair rejects one side", !HasCompleteBonePair("R", ""));
+
+  auto ParamBlockAccepted = [](const char *json) {
+    jsonmini::Parser p;
+    p.p = json;
+    jsonmini::Value v;
+    CharacterProfile profile;
+    return p.ParseValue(v) && ParseParamBlock(v, profile);
+  };
+  CHECK("gait numeric type mismatch rejected",
+        !ParamBlockAccepted("{\"gait\":{\"run\":{\"frequency_hz\":\"bad\"}}}"));
+  CHECK("envelope non-object rejected",
+        !ParamBlockAccepted("{\"envelope\":[]}"));
+  CHECK("jump mode type mismatch rejected",
+        !ParamBlockAccepted("{\"jump\":{\"mode\":3}}"));
+  CHECK("native factor type mismatch rejected",
+        !ParamBlockAccepted("{\"native_amplify\":{\"factor\":\"bad\"}}"));
+
+  ConfigSnapshot validSnapshot;
+  CharacterProfile validProfile;
+  validProfile.enabled = true;
+  validProfile.bones.rightName = "R";
+  validProfile.bones.leftName = "L";
+  validSnapshot.characters["valid"] = validProfile;
+  CHECK("final validator accepts complete bone pair",
+        ValidateSnapshot(validSnapshot));
+
+  ConfigSnapshot invalidSnapshot = validSnapshot;
+  invalidSnapshot.characters["valid"].bones.leftName.clear();
+  CHECK("final validator rejects one-sided bone pair",
+        !ValidateSnapshot(invalidSnapshot));
+
+  auto RuntimeConfigAccepted = [](const char *json) {
+    jsonmini::Parser p;
+    p.p = json;
+    jsonmini::Value v;
+    RuntimeConfigFile runtime;
+    return p.ParseValue(v) && ParseRuntimeConfigValue(v, runtime);
+  };
+  CHECK("runtime config valid types accepted",
+        RuntimeConfigAccepted("{\"revision\":2,\"enabled\":true,"
+                              "\"active_preset\":\"Default\","
+                              "\"global\":{\"gait_sample_interval_ms\":50}}"));
+  CHECK("runtime revision type mismatch rejected",
+        !RuntimeConfigAccepted("{\"revision\":\"2\"}"));
+  CHECK("runtime enabled type mismatch rejected",
+        !RuntimeConfigAccepted("{\"enabled\":1}"));
+  CHECK("runtime interval must be positive integer",
+        !RuntimeConfigAccepted("{\"global\":{\"gait_sample_interval_ms\":0}}"));
+}
+
+static void TestRuntimePaths() {
+  printf("[RUNTIME-PATHS]\n");
+  RuntimePathsSetRootForTest(
+      "D:\\Games\\Endfield Game\\SecondaryMotion");
+  char marker[512] = {};
+  CHECK("runtime plugin path derived",
+        RuntimePluginPath(marker, sizeof(marker), "spring_test.txt"));
+  CHECK("runtime plugin path points to sibling plugin directory",
+        strcmp(marker,
+               "D:\\Games\\Endfield Game\\plugin\\spring_test.txt") == 0);
+}
+
+static void TestBoneDumpJson() {
+  printf("[BONE-DUMP-JSON]\n");
+  FILE *f = tmpfile();
+  CHECK("bone dump temp file", f != nullptr);
+  if (!f) return;
+  bool first = true;
+  BoneScannerWriteEntry(f, "root\"slash\\line\n", 0, first);
+  BoneScannerWriteEntry(f, "child", 1, first);
+  fflush(f);
+  rewind(f);
+  char body[1024] = {};
+  size_t count = fread(body, 1, sizeof(body) - 1, f);
+  fclose(f);
+  body[count] = 0;
+  std::string json = std::string("{\"bones\":[") + body + "]}";
+  jsonmini::Parser parser;
+  parser.p = json.c_str();
+  jsonmini::Value root;
+  CHECK("bone dump entries form valid escaped JSON array",
+        parser.Parse(root) && root.Find("bones") &&
+            root.Find("bones")->arr.size() == 2);
+}
+
+static void TestDevCommandRevision() {
+  printf("[DEV-COMMAND]\n");
+  g_devCmd = DevCommand();
+  g_devCmd.active = true;
+  g_devCmd.revision = 7;
+  strncpy(g_devCmd.type, "axis_test", sizeof(g_devCmd.type) - 1);
+  DevCommandClear();
+  CHECK("clear deactivates command", !g_devCmd.active);
+  CHECK("clear preserves processed revision", g_devCmd.revision == 7);
+}
+
+static JumpPhaseAObservation MakeJumpPhaseAObservation(
+    DWORD ms, bool pluginEnabled, const char *characterId, void *animator,
+    bool readOk, int reported, size_t parsed) {
+  JumpPhaseAObservation o;
+  o.sampleMs = ms;
+  o.pluginEnabled = pluginEnabled;
+  o.readOk = readOk;
+  o.reportedCount = reported;
+  o.parsedCount = parsed;
+  snprintf(o.characterId, sizeof(o.characterId), "%s", characterId);
+  o.animator = animator;
+  return o;
+}
+
+static size_t CountCsvColumns(const std::string &line) {
+  size_t columns = 1;
+  bool quoted = false;
+  for (size_t i = 0; i < line.size(); ++i) {
+    if (line[i] == '"') {
+      if (quoted && i + 1 < line.size() && line[i + 1] == '"') {
+        ++i;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (line[i] == ',' && !quoted) {
+      ++columns;
+    }
+  }
+  return columns;
+}
+
+static void TestJumpPhaseAProbe() {
+  printf("[JUMP-PHASE-A]\n");
+  static JumpPhaseATimeline timeline;
+  CHECK("Phase A ring storage initializes before producer use",
+        timeline.Initialize());
+  void *animatorA = reinterpret_cast<void *>(0x1000);
+  void *animatorB = reinterpret_cast<void *>(0x2000);
+
+  JumpPhaseAObservation idle = MakeJumpPhaseAObservation(
+      1000, false, "chr_a", animatorA, true, 1, 1);
+  snprintf(idle.clips[0].name, sizeof(idle.clips[0].name),
+           "A_actor_lady_idle_loop");
+  idle.clips[0].weight = 1.0f;
+  CHECK("Phase A ignores non-jump before trigger", !timeline.Observe(idle));
+  CHECK("Phase A remains idle before trigger",
+        timeline.State() == JumpPhaseAState::Idle && timeline.Count() == 0);
+
+  JumpPhaseAObservation enabledJump = MakeJumpPhaseAObservation(
+      1050, true, "chr_a", animatorA, true, 2, 2);
+  snprintf(enabledJump.clips[0].name, sizeof(enabledJump.clips[0].name),
+           "idle_jump_start_l");
+  snprintf(enabledJump.clips[1].name, sizeof(enabledJump.clips[1].name),
+           "A_actor_lady_run_loop");
+  enabledJump.sampleJumpEvidence = true;
+  CHECK("Phase A cannot start while production is enabled",
+        !timeline.Observe(enabledJump) &&
+            timeline.State() == JumpPhaseAState::Idle);
+
+  JumpPhaseAObservation trigger = enabledJump;
+  trigger.pluginEnabled = false;
+  trigger.sampleMs = 1100;
+  trigger.clips[0].weight = 0.0f;
+  trigger.clips[1].weight = 1.0f;
+  CHECK("first disabled Jump sample starts capture", timeline.Observe(trigger));
+  CHECK("trigger sample is retained",
+        timeline.State() == JumpPhaseAState::Capturing &&
+            timeline.Count() == 1 && timeline.Frames()[0].sampleJump &&
+            !timeline.Frames()[0].sampleLanding);
+
+  JumpPhaseAObservation landing = MakeJumpPhaseAObservation(
+      1150, false, "chr_a", animatorA, true, 4, 4);
+  snprintf(landing.clips[0].name, sizeof(landing.clips[0].name),
+           "A_actor_lady_run_loop");
+  snprintf(landing.clips[1].name, sizeof(landing.clips[1].name),
+           "idle_jump_land_l");
+  snprintf(landing.clips[2].name, sizeof(landing.clips[2].name),
+           "idle_jump_start_l");
+  snprintf(landing.clips[3].name, sizeof(landing.clips[3].name),
+           "decorative,\r\n\"clip\"");
+  landing.clips[0].weight = 1.0f;
+  landing.clips[1].weight = -1.0f;
+  landing.clips[2].weight = NAN;
+  landing.sampleJumpEvidence = true;
+  landing.sampleLandingEvidence = true;
+  CHECK("jump and landing retain gait sampler's profile-aware aggregation",
+        timeline.Observe(landing) && timeline.Count() == 2 &&
+            timeline.Frames()[1].sampleJump &&
+            timeline.Frames()[1].sampleLanding &&
+            timeline.Frames()[1].hasNonFiniteWeight);
+
+  JumpPhaseAObservation failure = MakeJumpPhaseAObservation(
+      1200, false, "chr_a", animatorA, false, 5, 0);
+  failure.readFailure = 5;
+  failure.cachedGait = GaitRun;
+  failure.cachedJump = true;
+  CHECK("read failure is recorded without becoming a fresh Jump edge",
+        timeline.Observe(failure) && timeline.Count() == 3 &&
+            !timeline.Frames()[2].readOk &&
+            !timeline.Frames()[2].sampleJump &&
+            timeline.Frames()[2].cachedJump &&
+            timeline.Frames()[2].readFailure == 5 &&
+            timeline.Frames()[2].failureStreak == 1);
+
+  JumpPhaseAObservation switched = MakeJumpPhaseAObservation(
+      1250, false, "chr_b", animatorB, true, 1, 1);
+  snprintf(switched.clips[0].name, sizeof(switched.clips[0].name),
+           "idle_jump_start_l");
+  CHECK("character epoch change seals before appending new rows",
+        !timeline.Observe(switched) &&
+            timeline.State() == JumpPhaseAState::Sealed &&
+            timeline.Count() == 3);
+
+  const char *csvPath = "verify_jump_phase_a.csv";
+  remove(csvPath);
+  remove("verify_jump_phase_a.csv.tmp");
+  CHECK("Phase A CSV writes sealed timeline atomically",
+        JumpPhaseAWriteCsvAtomic(csvPath, timeline));
+  FILE *csv = fopen(csvPath, "rb");
+  std::string csvText;
+  if (csv) {
+    char buffer[4096];
+    size_t n = 0;
+    while ((n = fread(buffer, 1, sizeof(buffer), csv)) > 0)
+      csvText.append(buffer, n);
+    fclose(csv);
+  }
+  CHECK("Phase A CSV final exists and temp is gone",
+        !csvText.empty() &&
+            GetFileAttributesA("verify_jump_phase_a.csv.tmp") ==
+                INVALID_FILE_ATTRIBUTES);
+  CHECK("Phase A CSV escapes clip names",
+        csvText.find("\"decorative,\\r\\n\"\"clip\"\"\"") !=
+            std::string::npos);
+  bool columnsOk = true;
+  size_t pos = 0;
+  while (pos < csvText.size()) {
+    size_t end = csvText.find('\n', pos);
+    std::string line = csvText.substr(
+        pos, end == std::string::npos ? std::string::npos : end - pos);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.empty() && CountCsvColumns(line) != 51) columnsOk = false;
+    if (end == std::string::npos) break;
+    pos = end + 1;
+  }
+  CHECK("Phase D CSV header and rows have 51 columns", columnsOk);
+  CHECK("CSV success does not mutate producer state",
+        timeline.State() == JumpPhaseAState::Sealed);
+  timeline.MarkFlushed();
+  CHECK("worker marks flushed only after success",
+        timeline.State() == JumpPhaseAState::Flushed);
+  remove(csvPath);
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation profileJump = MakeJumpPhaseAObservation(
+      2000, false, "chr_profile", animatorA, true, 1, 1);
+  snprintf(profileJump.clips[0].name, sizeof(profileJump.clips[0].name),
+           "character_special_jump_rule");
+  CharacterProfile jumpProfile;
+  AnimationRule jumpRule;
+  jumpRule.contains = "special_jump_rule";
+  jumpRule.gait = GaitRun;
+  jumpProfile.animationRules.push_back(jumpRule);
+  GaitClassification profileClassification =
+      ClassifyClipNameFull(profileJump.clips[0].name, &jumpProfile);
+  profileJump.sampleJumpEvidence = profileClassification.jumpDetected;
+  profileJump.sampleLandingEvidence = profileClassification.landingDetected;
+  CHECK("profile rule produces real accepted Jump evidence",
+        profileClassification.gait == GaitRun &&
+            profileClassification.jumpDetected);
+  CHECK("Phase A uses profile-aware result supplied by gait sampler",
+        timeline.Observe(profileJump) &&
+            timeline.State() == JumpPhaseAState::Capturing &&
+            timeline.Frames()[0].sampleJump);
+
+  JumpPhaseAObservation truncated = MakeJumpPhaseAObservation(
+      2050, false, "chr_profile", animatorA, true, 12, 8);
+  truncated.truncated = true;
+  for (size_t i = 0; i < kJumpPhaseAMaxClips; ++i)
+    snprintf(truncated.clips[i].name, sizeof(truncated.clips[i].name),
+             "clip_%zu", i);
+  CHECK("truncated read is retained but evidence is explicitly incomplete",
+        timeline.Observe(truncated) && timeline.Count() == 2 &&
+            timeline.Frames()[1].clipCount == kJumpPhaseAMaxClips &&
+            !timeline.Frames()[1].evidenceComplete);
+
+  JumpPhaseAObservation seal = truncated;
+  seal.sampleMs = 2100;
+  seal.pluginEnabled = true;
+  CHECK("re-enabling production seals Phase A immediately",
+        !timeline.Observe(seal) &&
+            timeline.State() == JumpPhaseAState::Sealed);
+  CHECK("failed CSV write preserves sealed data",
+        !JumpPhaseAWriteCsvAtomic("missing_phase_a_dir\\timeline.csv",
+                                  timeline) &&
+            timeline.State() == JumpPhaseAState::Sealed);
+
+  JumpPhaseAFlushSchedule retry;
+  CHECK("sealed CSV is eligible for immediate first attempt",
+        retry.Due(100, JumpPhaseAState::Sealed));
+  retry.OnFailure(100);
+  CHECK("first failure backs off for one second",
+        !retry.Due(1099, JumpPhaseAState::Sealed) &&
+            retry.Due(1100, JumpPhaseAState::Sealed));
+  retry.OnFailure(1100);
+  CHECK("second failure doubles the backoff",
+        !retry.Due(3099, JumpPhaseAState::Sealed) &&
+            retry.Due(3100, JumpPhaseAState::Sealed));
+  retry.Reset();
+  retry.OnFailure(0xFFFFFFF0u);
+  CHECK("flush deadline remains correct across GetTickCount wrap",
+        !retry.Due(500, JumpPhaseAState::Sealed) &&
+            retry.Due(984, JumpPhaseAState::Sealed));
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation wrapTrigger = profileJump;
+  wrapTrigger.sampleMs = 0xFFFFFFF0u;
+  CHECK("capture starts near GetTickCount wrap", timeline.Observe(wrapTrigger));
+  JumpPhaseAObservation wrapDeadline = profileJump;
+  wrapDeadline.sampleMs = 59984u;
+  CHECK("60 second deadline seals correctly across GetTickCount wrap",
+        timeline.Observe(wrapDeadline) &&
+            timeline.State() == JumpPhaseAState::Sealed &&
+            timeline.Frames()[1].elapsedMs == kJumpPhaseACaptureMs);
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation fill = profileJump;
+  fill.sampleMs = 3000;
+  bool filled = timeline.Observe(fill);
+  for (size_t i = 1; filled && i < kJumpPhaseAMaxFrames; ++i)
+    filled = timeline.Observe(fill);
+  CHECK("fixed ring seals exactly at capacity without overflow",
+        filled && timeline.Count() == kJumpPhaseAMaxFrames &&
+            timeline.State() == JumpPhaseAState::Sealed);
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation truncatedWithoutVisibleJump = truncated;
+  truncatedWithoutVisibleJump.sampleMs = 4000;
+  truncatedWithoutVisibleJump.sampleJumpEvidence = false;
+  CHECK("truncation itself starts a diagnostic capture fail-closed",
+        timeline.Observe(truncatedWithoutVisibleJump) &&
+            timeline.State() == JumpPhaseAState::Capturing &&
+            timeline.Count() == 1 &&
+            !timeline.Frames()[0].evidenceComplete &&
+            !timeline.Frames()[0].sampleJump);
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation partialParse = MakeJumpPhaseAObservation(
+      5000, false, "chr_partial", animatorA, true, 8, 5);
+  CHECK("reported clips missing from parsed set are incomplete evidence",
+        timeline.Observe(partialParse) && timeline.Count() == 1 &&
+            !timeline.Frames()[0].evidenceComplete);
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation tickZero = profileJump;
+  tickZero.sampleMs = 0;
+  CHECK("successful sample at tick zero starts capture",
+        timeline.Observe(tickZero));
+  JumpPhaseAObservation afterTickZeroFailure = tickZero;
+  afterTickZeroFailure.sampleMs = 50;
+  afterTickZeroFailure.readOk = false;
+  afterTickZeroFailure.readFailure = 5;
+  afterTickZeroFailure.sampleJumpEvidence = false;
+  CHECK("sample age does not use tick zero as an unset sentinel",
+        timeline.Observe(afterTickZeroFailure) && timeline.Count() == 2 &&
+            timeline.Frames()[1].sampleAgeMs == 50);
+
+  MovementSignalSample movement;
+  movement.identityValid = true;
+  movement.resolutionMask = MovementResolveEntityField |
+                            MovementResolveClass |
+                            MovementResolveVelocity |
+                            MovementResolveFallingSpeed;
+  movement.entity = 0x3000;
+  movement.movement = 0x4000;
+  movement.velocityValid = true;
+  movement.velocity = {1.0f, 2.0f, 3.0f};
+  movement.fallingSpeedValid = true;
+  movement.fallingSpeed = -4.5f;
+  CHECK("Phase D continuous validity requires finite velocity and falling speed",
+        MovementSignalContinuousValid(movement));
+  movement.velocity.x = NAN;
+  CHECK("Phase D continuous validity rejects non-finite values",
+        !MovementSignalContinuousValid(movement));
+  movement.velocity.x = 1.0f;
+
+  timeline.ResetForTest();
+  JumpPhaseAObservation phaseD = idle;
+  phaseD.sampleMs = 6000;
+  phaseD.phaseDActive = true;
+  phaseD.movement = movement;
+  CHECK("Phase D starts immediately from a safe identity-valid movement sample",
+        timeline.Observe(phaseD) && timeline.Count() == 1 &&
+            timeline.Frames()[0].movement.entity == 0x3000 &&
+            timeline.Frames()[0].movement.velocityValid);
+  JumpPhaseAObservation phaseDStop = phaseD;
+  phaseDStop.sampleMs = 6050;
+  phaseDStop.pluginEnabled = true;
+  CHECK("Phase D re-enable seals before another row",
+        !timeline.Observe(phaseDStop) &&
+            timeline.State() == JumpPhaseAState::Sealed &&
+            timeline.Count() == 1);
+  const char *phaseDPath = "verify_jump_phase_d.csv";
+  remove(phaseDPath);
+  remove("verify_jump_phase_d.csv.tmp");
+  CHECK("Phase D movement CSV writes atomically",
+        JumpPhaseAWriteCsvAtomic(phaseDPath, timeline));
+  FILE *phaseDCsv = fopen(phaseDPath, "rb");
+  std::string phaseDText;
+  if (phaseDCsv) {
+    char buffer[4096];
+    size_t n = 0;
+    while ((n = fread(buffer, 1, sizeof(buffer), phaseDCsv)) > 0)
+      phaseDText.append(buffer, n);
+    fclose(phaseDCsv);
+  }
+  CHECK("Phase D CSV contains validity and continuous signal columns",
+        phaseDText.find("movement_identity_valid") != std::string::npos &&
+            phaseDText.find("velocity_x") != std::string::npos &&
+            phaseDText.find("falling_speed") != std::string::npos &&
+            phaseDText.find(",1,2,3,") != std::string::npos &&
+            phaseDText.find("-4.5") != std::string::npos);
+  remove(phaseDPath);
+}
+
+// ---------- Phase E live Jump FSM + bounded inertial source ----------
+static JumpLiveSignal JumpSignal(uint32_t serial, DWORD sampleMs, float speed,
+                                 bool start = false, bool land = false) {
+  JumpLiveSignal s;
+  s.serial = serial;
+  s.sampleMs = sampleMs;
+  s.entity = 0x1234;
+  s.identityValid = true;
+  s.clipReadValid = true;
+  s.fallingSpeedValid = true;
+  s.fallingSpeed = speed;
+  s.jumpStartActive = start;
+  s.landingActive = land;
+  return s;
+}
+
+static void TestJumpInertialSource() {
+  printf("[JUMP PHASE E LIVE]\n");
+  CHECK("Jump direction keeps Y-axis characters positive",
+        Near(AutomaticJumpDirection(Axis::Y), 1.0f));
+  CHECK("Jump direction flips Z-axis characters",
+        Near(AutomaticJumpDirection(Axis::Z), -1.0f));
+  CHECK("Jump direction defaults X-axis characters positive",
+        Near(AutomaticJumpDirection(Axis::X), 1.0f));
+
+  JumpConfig tuning;
+  tuning.enabled = true;
+  tuning.mode = "landing_damped";
+
+  JumpInertialSource direct;
+  JumpInertialOutput d = direct.Tick(1000, JumpSignal(1, 1000, -12.0f,
+                                                      false, true), tuning,
+                                      true);
+  CHECK("direct fall remains native-only",
+        !d.valid && d.state == JumpInertialState::NativeOnly &&
+            Near(d.angleRad, 0.0f));
+
+  JumpInertialSource src;
+  JumpLiveSignal start = JumpSignal(1, 2000, 10.0f, true, false);
+  JumpInertialOutput rise = src.Tick(2000, start, tuning, true);
+  CHECK("exact start arms one Rising epoch",
+        rise.valid && rise.state == JumpInertialState::Rising &&
+            rise.eventEpoch == 1 && Near(rise.angleRad, 0.0f));
+
+  JumpInertialOutput held = src.Tick(2016, start, tuning, true);
+  CHECK("held sample does not retrigger epoch",
+        held.valid && held.eventEpoch == 1);
+
+  JumpInertialSource phasedMotion;
+  phasedMotion.Tick(4000, JumpSignal(1, 4000, 10.0f, true), tuning, true);
+  float delayedPeakDeg = 0.0f;
+  for (int i = 1; i <= 5; ++i) {
+    DWORD now = 4000 + (DWORD)(i * 16);
+    JumpInertialOutput delayed = phasedMotion.Tick(
+        now, JumpSignal(1 + i, now, 10.0f, i < 3), tuning, true);
+    float deg = fabsf(RadToDeg(delayed.angleRad));
+    if (deg > delayedPeakDeg) delayedPeakDeg = deg;
+  }
+  CHECK("takeoff inertia has an 80ms visual delay", delayedPeakDeg < 0.1f);
+
+  JumpInertialOutput downward;
+  for (int i = 6; i <= 20; ++i) {
+    DWORD now = 4000 + (DWORD)(i * 16);
+    downward = phasedMotion.Tick(
+        now, JumpSignal(1 + i, now, 8.0f, false), tuning, true);
+  }
+  CHECK("late Rising response moves chest downward",
+        RadToDeg(downward.angleRad) < -10.0f &&
+            RadToDeg(downward.angleRad) > -35.0f);
+
+  JumpConfig stronger = tuning;
+  stronger.risingTargetDeg = tuning.risingTargetDeg * 2.0f;
+  JumpInertialSource baseConfigured;
+  JumpInertialSource strongConfigured;
+  baseConfigured.Tick(5000, JumpSignal(1, 5000, 10.0f, true), tuning, true);
+  strongConfigured.Tick(5000, JumpSignal(1, 5000, 10.0f, true), stronger,
+                        true);
+  JumpInertialOutput baseOut, strongOut;
+  for (int i = 1; i <= 20; ++i) {
+    DWORD now = 5000 + (DWORD)(i * 16);
+    baseOut = baseConfigured.Tick(now, JumpSignal(1 + i, now, 8.0f),
+                                  tuning, true);
+    strongOut = strongConfigured.Tick(now, JumpSignal(1 + i, now, 8.0f),
+                                      stronger, true);
+  }
+  CHECK("per-profile Rising target changes live source amplitude",
+        RadToDeg(strongOut.angleRad) < RadToDeg(baseOut.angleRad) * 1.7f);
+
+  phasedMotion.Tick(4336, JumpSignal(22, 4336, 0.0f), tuning, true);
+  float fallingHeldMinDeg = 1000000.0f;
+  JumpInertialOutput upward;
+  for (int i = 22; i <= 45; ++i) {
+    DWORD now = 4000 + (DWORD)(i * 16);
+    upward = phasedMotion.Tick(
+        now, JumpSignal(1 + i, now, -6.0f), tuning, true);
+    if (i >= 38) {
+      float deg = RadToDeg(upward.angleRad);
+      if (deg < fallingHeldMinDeg) fallingHeldMinDeg = deg;
+    }
+  }
+  CHECK("Apex and Falling response moves upward and stays upward",
+        upward.state == JumpInertialState::Falling &&
+            fallingHeldMinDeg > 6.0f &&
+            RadToDeg(upward.angleRad) < 35.0f);
+
+  JumpInertialOutput apex =
+      src.Tick(2063, JumpSignal(2, 2063, 0.1f), tuning, true);
+  CHECK("near-zero fallingSpeed enters Apex",
+        apex.valid && apex.state == JumpInertialState::Apex);
+  JumpInertialOutput fall =
+      src.Tick(2126, JumpSignal(3, 2126, -1.0f), tuning, true);
+  CHECK("negative fallingSpeed enters Falling",
+        fall.valid && fall.state == JumpInertialState::Falling);
+
+  JumpInertialSource withLanding;
+  JumpInertialSource noLanding;
+  withLanding.Tick(3000, JumpSignal(1, 3000, 10.0f, true), tuning, true);
+  noLanding.Tick(3000, JumpSignal(1, 3000, 10.0f, true), tuning, true);
+  withLanding.Tick(3063, JumpSignal(2, 3063, -1.0f), tuning, true);
+  noLanding.Tick(3063, JumpSignal(2, 3063, -1.0f), tuning, true);
+  JumpInertialOutput landed = withLanding.Tick(
+      3126, JumpSignal(3, 3126, -12.0f, false, true), tuning, true);
+  JumpInertialOutput control = noLanding.Tick(
+      3126, JumpSignal(3, 3126, -12.0f, false, false), tuning, true);
+  CHECK("landing impulse is causal and position-continuous",
+        landed.valid && landed.state == JumpInertialState::LandingTail &&
+            Near(landed.angleRad, control.angleRad, 1e-5f) &&
+            !Near(landed.angularVelocityDegSec,
+                  control.angularVelocityDegSec, 0.01f));
+
+  // Regression: a jump that resolves in a clip whose name has no "land" (e.g.
+  // an air attack ending in battle_air_atk_*) never fires a landing edge, so
+  // the Rising/Apex/Falling phase would hang forever and freeze the chest at
+  // the converged angle. The air-phase watchdog must force-release it.
+  JumpInertialSource stuckAir;
+  stuckAir.Tick(9000, JumpSignal(1, 9000, 10.0f, true, false), tuning, true);
+  JumpInertialOutput airMid = stuckAir.Tick(
+      9016, JumpSignal(2, 9016, 8.0f, false, false), tuning, true);
+  CHECK("no-landing jump enters an air phase", airMid.valid);
+  JumpInertialOutput airBefore;   // still active well inside the ceiling
+  JumpInertialOutput airAfter;
+  for (int i = 3; i <= 210; ++i) {
+    DWORD now = 9016 + (DWORD)(i * 16);
+    JumpInertialOutput f = stuckAir.Tick(
+        now, JumpSignal(1 + i, now, 8.0f, false, false), tuning, true);
+    if (i == 90) airBefore = f;
+    airAfter = f;
+  }
+  CHECK("air-phase watchdog does not release inside the normal ceiling",
+        airBefore.valid && airBefore.state != JumpInertialState::NativeOnly);
+  CHECK("no-landing air phase is force-released past the ceiling",
+        !airAfter.valid && airAfter.state == JumpInertialState::NativeOnly &&
+            Near(airAfter.angleRad, 0.0f));
+
+  JumpConfig longShake = tuning;
+  longShake.amplitudeDeg = 40.0f;
+  longShake.dampingTauSec = 0.7f;
+  longShake.frequencyHz = 2.5f;
+  longShake.maxDurationSec = 4.4f;
+  longShake.landingImpulseGain = 0.0f;
+  JumpInertialSource durationGuard;
+  durationGuard.Tick(7000, JumpSignal(1, 7000, 10.0f, true), longShake,
+                     true);
+  durationGuard.Tick(7063, JumpSignal(2, 7063, -12.0f, false, true),
+                     longShake, true);
+  JumpInertialOutput guarded;
+  for (int i = 1; i <= 32; ++i) {
+    DWORD now = 7063 + (DWORD)(i * 16);
+    guarded = durationGuard.Tick(
+        now, JumpSignal(2 + i, now, -12.0f), longShake, true);
+  }
+  CHECK("explicit landing shake duration prevents early settle",
+        guarded.valid &&
+            guarded.state == JumpInertialState::LandingTail);
+
+  float maxDeg = 0.0f;
+  float earlyShakePeakDeg = 0.0f;
+  float lateShakePeakDeg = 0.0f;
+  bool shakePositive = false;
+  bool shakeNegative = false;
+  JumpInertialOutput out = landed;
+  for (int i = 1; i <= 140; ++i) {
+    DWORD now = 3126 + (DWORD)(i * 16);
+    JumpLiveSignal tail = JumpSignal(3 + i, now, -12.0f);
+    out = withLanding.Tick(now, tail, tuning, true);
+    float deg = fabsf(RadToDeg(out.angleRad));
+    if (deg > maxDeg) maxDeg = deg;
+    float shake = out.landingShakeAngleDeg;
+    if (shake > 1.0f) shakePositive = true;
+    if (shake < -1.0f) shakeNegative = true;
+    if (i <= 25 && fabsf(shake) > earlyShakePeakDeg)
+      earlyShakePeakDeg = fabsf(shake);
+    if (i >= 40 && i <= 75 && fabsf(shake) > lateShakePeakDeg)
+      lateShakePeakDeg = fabsf(shake);
+  }
+  CHECK("landing tail adds an explicit decaying oscillation",
+        shakePositive && shakeNegative && earlyShakePeakDeg > 10.0f &&
+            lateShakePeakDeg < earlyShakePeakDeg * 0.5f);
+  CHECK("unclamped diagnostic tail exceeds the old cap but remains finite",
+        std::isfinite(maxDeg) && maxDeg > 10.0f);
+  CHECK("landing tail is finite",
+        out.state == JumpInertialState::NativeOnly && !out.valid);
+
+  JumpLiveSignal invalid = JumpSignal(500, 6000, 1.0f);
+  invalid.identityValid = false;
+  JumpInertialOutput reset = src.Tick(6000, invalid, tuning, true);
+  CHECK("invalid identity resets fail-closed",
+        !reset.valid && reset.state == JumpInertialState::NativeOnly &&
+            Near(reset.angleRad, 0.0f));
+  CHECK("disabled config resets fail-closed",
+        !src.Tick(6016, JumpSignal(501, 6016, 10.0f, true), tuning,
+                  false).valid);
+}
+
 int main() {
   printf("=== SecondaryMotion V2 verification ===\n\n");
   TestJson();
@@ -237,8 +1033,13 @@ int main() {
   TestGait();
   TestEnvelope();
   TestQuat();
-  TestCompensation();
   TestHotReload();
+  TestConfigValidation();
+  TestRuntimePaths();
+  TestBoneDumpJson();
+  TestDevCommandRevision();
+  TestJumpPhaseAProbe();
+  TestJumpInertialSource();
 
   printf("\n=== RESULT: %d passed, %d failed ===\n", g_pass, g_fail);
   if (g_fail == 0) {

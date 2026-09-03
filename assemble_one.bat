@@ -30,6 +30,7 @@ copy /y "%ROOT%bin\d3dcompiler_47.dll" "%STAGE%\plugin\" >nul
 copy /y "%ROOT%bin\vulkan-1.dll" "%STAGE%\plugin\" >nul
 copy /y "%ROOT%SecondaryMotion\data\characters.default.json" "%STAGE%\data\characters.default.template.json" >nul
 copy /y "%ROOT%SecondaryMotion\presets\Default.json" "%STAGE%\presets\Default.template.json" >nul
+copy /y "%ROOT%SecondaryMotion\presets\Default.v3.0.0-bad.template.json" "%STAGE%\presets\Default.v3.0.0-bad.template.json" >nul
 if exist "%ROOT%SecondaryMotion\presets\User.json" copy /y "%ROOT%SecondaryMotion\presets\User.json" "%STAGE%\presets\User.template.json" >nul
 copy /y "%ROOT%SecondaryMotion\runtime\config.json" "%STAGE%\runtime\" >nul
 copy /y "%ROOT%USER_GUIDE_EN.txt" "%STAGE%\" >nul

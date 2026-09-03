@@ -6,17 +6,32 @@
 #include "../character/active_character.h"
 #include "../common/logger.h"
 #include "../common/safe_unity.h"
+#include "../runtime/runtime_paths.h"
 
 static FILE *g_recFile = nullptr;
 static int g_recFrames = 0;
 
-static void TransformRecorderEnsureInit(const ActiveCharacterRuntime &c) {
-  if (g_recFile) return;
-  g_recFile = fopen("plugin/breast_record.csv", "w");
+static bool TransformRecorderEnsureInit(const ActiveCharacterRuntime &c) {
+  (void)c;
+  if (g_recFile) return true;
+  if (!RuntimePathsInit()) {
+    ProbeLog("[REC] start failed: runtime root unavailable\n");
+    return false;
+  }
+  char dir[512];
+  RuntimePath(dir, sizeof(dir), "developer");
+  CreateDirectoryA(dir, nullptr);
+  char path[512];
+  RuntimePath(path, sizeof(path), "developer\\breast_record.csv");
+  g_recFile = fopen(path, "w");
   if (g_recFile) {
     fprintf(g_recFile, "frame,time_ms,gait,Rx,Ry,Rz,Rw,Lx,Ly,Lz,Lw\n");
     g_recFrames = 0;
+    ProbeLog("[REC] output=%s\n", path);
+    return true;
   }
+  ProbeLog("[REC] start failed: cannot open %s\n", path);
+  return false;
 }
 
 static void TransformRecorderFrame(const ActiveCharacterRuntime &c) {

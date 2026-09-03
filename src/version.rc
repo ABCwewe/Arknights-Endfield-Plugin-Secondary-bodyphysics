@@ -1,7 +1,7 @@
 #include <winver.h>
 
-#define SM_VERSION_MAJOR 1
-#define SM_VERSION_MINOR 0
+#define SM_VERSION_MAJOR 2
+#define SM_VERSION_MINOR 4
 #define SM_VERSION_PATCH 0
 #define SM_STRINGIFY2(x) #x
 #define SM_STRINGIFY(x) SM_STRINGIFY2(x)
@@ -20,7 +20,7 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "Endfield Secondary Motion Tool v1"
+            VALUE "FileDescription", "Endfield Secondary Motion Tool v2.4"
             VALUE "FileVersion", SM_VERSION ".0"
             VALUE "InternalName", "sbm"
             VALUE "OriginalFilename", "sbm.dll"

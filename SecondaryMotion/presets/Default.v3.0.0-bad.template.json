@@ -1,0 +1,348 @@
+{
+  "schema_version": 1,
+  "name": "3.0.0 bad Jump comparison only",
+  "characters": {
+    "chr_0014_aurora": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 40,
+        "damping_tau_sec": 0.7,
+        "frequency_hz": 2.5,
+        "max_duration_sec": 4.4,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -40,
+        "apex_falling_target_deg": 40,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 60
+      }
+    },
+    "chr_0017_yvonne": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0031_mifu": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 40,
+        "damping_tau_sec": 0.57,
+        "frequency_hz": 2.25,
+        "max_duration_sec": 3.11,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -30,
+        "apex_falling_target_deg": 30,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 1.5,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 60
+      }
+    },
+    "chr_0003_endminf": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0030_zhuangfy": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0016_laevat": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 40,
+        "damping_tau_sec": 0.57,
+        "frequency_hz": 2.25,
+        "max_duration_sec": 3.11,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 1.8,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 60
+      }
+    },
+    "chr_0004_pelica": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0005_chen": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0032_lizhiyan": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 40,
+        "damping_tau_sec": 0.57,
+        "frequency_hz": 2.25,
+        "max_duration_sec": 3.11,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -25,
+        "apex_falling_target_deg": 30,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 60
+      }
+    },
+    "chr_0035_liino": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 40,
+        "damping_tau_sec": 0.5,
+        "frequency_hz": 2.5,
+        "max_duration_sec": 2.8,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -35,
+        "apex_falling_target_deg": 25,
+        "acceleration_response": 0.4,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 1.7,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 60
+      }
+    },
+    "chr_0013_aglina": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0026_lastrite": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0009_azrila": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0012_avywen": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0011_seraph": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0007_ikut": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0021_whiten": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0019_karin": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    },
+    "chr_0022_bounda": {
+      "jump": {
+        "enabled": true,
+        "mode": "landing_damped",
+        "amplitude_deg": 23.333,
+        "damping_tau_sec": 0.35,
+        "frequency_hz": 3,
+        "max_duration_sec": 1.2,
+        "takeoff_delay_sec": 0.08,
+        "rising_target_deg": -23.333,
+        "apex_falling_target_deg": 23.333,
+        "acceleration_response": 0.1667,
+        "acceleration_filter_tau_sec": 0.08,
+        "natural_frequency_hz": 2.2,
+        "damping_ratio": 0.52,
+        "landing_impulse_gain": 6.667
+      }
+    }
+  }
+}

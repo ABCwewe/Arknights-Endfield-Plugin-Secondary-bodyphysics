@@ -11,8 +11,105 @@
 #include "../character/bone_resolver.h"
 #include "../common/logger.h"
 #include "../config/config_types.h"
+#include "../diagnostics/jump_phase_a_probe.h"
+#include "../diagnostics/movement_signal_probe.h"
 #include "../il2cpp/animator_clip_reader.h"
 #include "gait_classifier.h"
+
+static JumpPhaseAObservation JumpPhaseABaseObservation(
+    const ActiveCharacterRuntime &active, const ConfigSnapshot &cfg,
+    DWORD now, const ClipReadStatus &status,
+    const MovementSignalSample &movement) {
+  JumpPhaseAObservation observation;
+  observation.sampleMs = now;
+  observation.pluginEnabled = cfg.pluginEnabled;
+  observation.readOk = status.readOk;
+  observation.readFailure = static_cast<uint32_t>(status.failure);
+  observation.reportedCount = status.reportedCount;
+  observation.parsedCount = status.parsedCount;
+  observation.truncated = status.truncated;
+  snprintf(observation.characterId, sizeof(observation.characterId), "%s",
+           active.characterId);
+  observation.animator = active.animator;
+  observation.cachedGait = active.currentGait;
+  observation.cachedTransitionToIdle = active.transitionToIdle;
+  observation.cachedJump = active.jumpDetected;
+  observation.cachedLanding = active.jumpActive;
+  observation.phaseDActive = !cfg.pluginEnabled;
+  observation.movement = movement;
+  return observation;
+}
+
+static bool PhaseDEntityAnimatorPairValid(
+    const ActiveCharacterRuntime &active) {
+  if (!g_mainCharEntity || !active.animator ||
+      active.animator != g_cachedAnimator)
+    return false;
+  __try {
+    const int entityAnimOffset =
+        SafeOff(OFF_entityComplexAnim, "entityComplexAnim");
+    const int animatorOffset =
+        SafeOff(OFF_complexAnimAnimator, "complexAnimAnimator");
+    if (entityAnimOffset < 0 || animatorOffset < 0) return false;
+    void *complexAnim = *reinterpret_cast<void **>(
+        static_cast<char *>(g_mainCharEntity) + entityAnimOffset);
+    if (!complexAnim) return false;
+    void *animator = *reinterpret_cast<void **>(
+        static_cast<char *>(complexAnim) + animatorOffset);
+    return animator == active.animator;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+static void PublishJumpLiveSignal(ActiveCharacterRuntime &active, DWORD now,
+                                  const MovementSignalSample &movement,
+                                  bool clipReadValid, bool jumpStartActive,
+                                  bool landingActive) {
+  uint32_t next = active.jumpSignal.serial + 1u;
+  if (next == 0) next = 1;
+  active.jumpSignal.serial = next;
+  active.jumpSignal.sampleMs = now;
+  active.jumpSignal.entity = movement.entity;
+  active.jumpSignal.identityValid = movement.identityValid;
+  active.jumpSignal.clipReadValid = clipReadValid;
+  active.jumpSignal.fallingSpeedValid =
+      movement.fallingSpeedValid && std::isfinite(movement.fallingSpeed);
+  active.jumpSignal.fallingSpeed = movement.fallingSpeed;
+  active.jumpSignal.teleported =
+      movement.teleportedValid && movement.teleportedThisFrame;
+  active.jumpSignal.jumpStartActive = jumpStartActive;
+  active.jumpSignal.landingActive = landingActive;
+}
+
+static void JumpPhaseAObserveReadFailure(
+    const ActiveCharacterRuntime &active, const ConfigSnapshot &cfg,
+    DWORD now, const ClipReadStatus &status,
+    const MovementSignalSample &movement) {
+  JumpPhaseAObservation observation =
+      JumpPhaseABaseObservation(active, cfg, now, status, movement);
+  g_jumpPhaseATimeline.Observe(observation);
+}
+
+static void JumpPhaseAObserveClips(
+    const ActiveCharacterRuntime &active, const ConfigSnapshot &cfg,
+    DWORD now, const ClipReadStatus &status, const ClipSample *clips,
+    size_t count, bool sampleJump, bool sampleLanding,
+    const MovementSignalSample &movement) {
+  JumpPhaseAObservation observation =
+      JumpPhaseABaseObservation(active, cfg, now, status, movement);
+  size_t copied = count < kJumpPhaseAMaxClips ? count : kJumpPhaseAMaxClips;
+  observation.parsedCount = count;
+  observation.sampleJumpEvidence = sampleJump;
+  observation.sampleLandingEvidence = sampleLanding;
+  for (size_t i = 0; i < copied; ++i) {
+    snprintf(observation.clips[i].name, sizeof(observation.clips[i].name),
+             "%s", clips[i].name);
+    observation.clips[i].weight = clips[i].weight;
+    observation.clips[i].durationSec = clips[i].durationSec;
+  }
+  g_jumpPhaseATimeline.Observe(observation);
+}
 
 class GaitSampler {
 public:
@@ -83,12 +180,10 @@ public:
           active.axis = active.bones.axis;
           active.axisSign = 1.0f;
         }
-        active.boneAmplitudeScale =
-            active.bones.ampScale * active.profile->amplitudeScale;
-        ProbeLog("[BONE] R=%s L=%s axis=%d%s sign=%+.0f scale=%.2f\n",
+        ProbeLog("[BONE] R=%s L=%s axis=%d%s sign=%+.0f\n",
                  active.bones.rightName, active.bones.leftName,
                  (int)active.axis, active.profile->axisExplicit ? "" : "(auto)",
-                 active.axisSign, active.boneAmplitudeScale);
+                 active.axisSign);
       }
     }
 
@@ -99,26 +194,46 @@ public:
 
     ClipSample clips[8];
     size_t count = 0;
-    if (!reader_.ReadLayer0(callerAnimator, clips, 8, count)) return;
+    ClipReadStatus readStatus;
+    MovementSignalSample movement;
+    const bool liveJumpSignalNeeded =
+        cfg.pluginEnabled && active.profile && active.profile->jump.enabled &&
+        active.profile->jump.mode == "landing_damped";
+    if (!cfg.pluginEnabled || liveJumpSignalNeeded) {
+      const bool identityValid = PhaseDEntityAnimatorPairValid(active);
+      movement = g_movementSignalProbe.Sample(g_mainCharEntity, identityValid);
+    }
+    if (!reader_.ReadLayer0(callerAnimator, clips, 8, count, &readStatus)) {
+      PublishJumpLiveSignal(active, now, movement, false, false, false);
+      JumpPhaseAObserveReadFailure(active, cfg, now, readStatus, movement);
+      return;
+    }
 
     int bestGait = GaitNone;
     float bestW = -1.0f;
     bool transToIdle = false;
     bool landing = false;
+    bool jumpStart = false;
     active.jumpDetected = false;  // recomputed every sample
     for (size_t i = 0; i < count; i++) {
-      GaitClassification cls = ClassifyClipNameFull(clips[i].name);
+      GaitClassification cls =
+          ClassifyClipNameFull(clips[i].name, active.profile);
       if (cls.gait >= GaitIdle && clips[i].weight > bestW) {
         bestW = clips[i].weight;
         bestGait = cls.gait;
       }
       if (cls.transitionToIdle) transToIdle = true;
       if (cls.landingDetected) landing = true;
+      if (cls.jumpDetected && strstr(clips[i].name, "jump_start"))
+        jumpStart = true;
       if (cls.jumpDetected) active.jumpDetected = true;
     }
     active.currentGait = bestGait;
     active.transitionToIdle = transToIdle;
     active.jumpActive = landing;
+    PublishJumpLiveSignal(active, now, movement, true, jumpStart, landing);
+    JumpPhaseAObserveClips(active, cfg, now, readStatus, clips, count,
+                           active.jumpDetected, landing, movement);
 
     // Diagnostic: dump clip names (helps onboarding new gaits such as
     // zipline/slide).  Rate-limited to ~2s.

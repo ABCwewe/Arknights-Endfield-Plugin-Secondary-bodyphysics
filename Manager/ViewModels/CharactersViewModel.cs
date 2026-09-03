@@ -37,8 +37,6 @@ public class CharacterItem : ViewModelBase {
         }
     }
 
-    public double AmpScale { get => Data.AmpScale; set { Data.AmpScale = value; LogEdit("AmpScale", value); OnPropertyChanged(); } }
-
     public double IdleAmp { get => Data.Amp[0]; set { Data.Amp[0] = value; LogEdit("IdleAmp", value); OnPropertyChanged(); } }
     public double WalkAmp { get => Data.Amp[1]; set { Data.Amp[1] = value; LogEdit("WalkAmp", value); OnPropertyChanged(); } }
     public double RunAmp { get => Data.Amp[2]; set { Data.Amp[2] = value; LogEdit("RunAmp", value); OnPropertyChanged(); } }
@@ -77,6 +75,73 @@ public class CharacterItem : ViewModelBase {
     public double EnvIdle { get => Data.EnvIdle; set { Data.EnvIdle = value; LogEdit("EnvIdle", value); OnPropertyChanged(); } }
     public double NativeFactor { get => Data.NativeFactor; set { Data.NativeFactor = value; LogEdit("NativeFactor", value); OnPropertyChanged(); } }
     public bool JumpEnabled { get => Data.JumpEnabled; set { Data.JumpEnabled = value; LogEdit("JumpEnabled", value); OnPropertyChanged(); } }
+    public double JumpAmplitude { get => Data.JumpAmplitude; set { Data.JumpAmplitude = value; LogEdit("JumpAmplitude", value); OnPropertyChanged(); } }
+    public double JumpDampingTau { get => Data.JumpDampingTau; set { Data.JumpDampingTau = value; LogEdit("JumpDampingTau", value); OnPropertyChanged(); } }
+    public double JumpFrequency { get => Data.JumpFrequency; set { Data.JumpFrequency = value; LogEdit("JumpFrequency", value); OnPropertyChanged(); } }
+    public double JumpMaxDuration { get => Data.JumpMaxDuration; set { Data.JumpMaxDuration = value; LogEdit("JumpMaxDuration", value); OnPropertyChanged(); } }
+    public double JumpTakeoffDelay { get => Data.JumpTakeoffDelay; set { Data.JumpTakeoffDelay = value; LogEdit("JumpTakeoffDelay", value); OnPropertyChanged(); } }
+    public double JumpRisingTarget { get => Data.JumpRisingTarget; set { Data.JumpRisingTarget = value; LogEdit("JumpRisingTarget", value); OnPropertyChanged(); } }
+    public double JumpApexFallingTarget { get => Data.JumpApexFallingTarget; set { Data.JumpApexFallingTarget = value; LogEdit("JumpApexFallingTarget", value); OnPropertyChanged(); } }
+    public double JumpAccelerationResponse { get => Data.JumpAccelerationResponse; set { Data.JumpAccelerationResponse = value; LogEdit("JumpAccelerationResponse", value); OnPropertyChanged(); } }
+    public double JumpAccelerationFilterTau { get => Data.JumpAccelerationFilterTau; set { Data.JumpAccelerationFilterTau = value; LogEdit("JumpAccelerationFilterTau", value); OnPropertyChanged(); } }
+    public double JumpNaturalFrequency { get => Data.JumpNaturalFrequency; set { Data.JumpNaturalFrequency = value; LogEdit("JumpNaturalFrequency", value); OnPropertyChanged(); } }
+    public double JumpDampingRatio { get => Data.JumpDampingRatio; set { Data.JumpDampingRatio = value; LogEdit("JumpDampingRatio", value); OnPropertyChanged(); } }
+    public double JumpLandingImpulseGain { get => Data.JumpLandingImpulseGain; set { Data.JumpLandingImpulseGain = value; LogEdit("JumpLandingImpulseGain", value); OnPropertyChanged(); } }
+
+    // Main-page UI helpers. The stored schema remains unchanged.
+    public double JumpRisingMagnitude {
+        get => Math.Abs(Data.JumpRisingTarget);
+        set {
+            Data.JumpRisingTarget = -Math.Abs(value);
+            LogEdit("JumpRisingTarget", Data.JumpRisingTarget);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(JumpRisingTarget));
+        }
+    }
+
+    static readonly (double Tau, double Frequency, double Duration)[] JumpShakePresets = {
+        (0.30, 2.50, 1.60),
+        (0.55, 2.00, 3.00),
+        (0.50, 2.50, 2.80),
+        (0.57, 2.25, 3.11),
+        (0.70, 2.50, 4.40),
+    };
+
+    public double JumpShakePresetIndex {
+        get {
+            int best = 0;
+            double bestScore = double.MaxValue;
+            for (int i = 0; i < JumpShakePresets.Length; ++i) {
+                var p = JumpShakePresets[i];
+                double score = Math.Abs(Data.JumpDampingTau - p.Tau) +
+                               Math.Abs(Data.JumpFrequency - p.Frequency) +
+                               Math.Abs(Data.JumpMaxDuration - p.Duration);
+                if (score < bestScore) { best = i; bestScore = score; }
+            }
+            return best;
+        }
+        set {
+            int index = Math.Clamp((int)Math.Round(value), 0, JumpShakePresets.Length - 1);
+            var p = JumpShakePresets[index];
+            Data.JumpDampingTau = p.Tau;
+            Data.JumpFrequency = p.Frequency;
+            Data.JumpMaxDuration = p.Duration;
+            LogEdit("JumpShakePreset", (index + 1) +
+                " (tau=" + p.Tau + ", frequency=" + p.Frequency +
+                ", duration=" + p.Duration + ")");
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(JumpDampingTau));
+            OnPropertyChanged(nameof(JumpFrequency));
+            OnPropertyChanged(nameof(JumpMaxDuration));
+            OnPropertyChanged(nameof(JumpShakePresetSummary));
+        }
+    }
+
+    public string JumpShakePresetSummary => L10n.Get(
+        "M_jump_shake_preset_values",
+        Data.JumpDampingTau.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+        Data.JumpFrequency.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+        Data.JumpMaxDuration.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
 }
 
 public class CharactersViewModel : ViewModelBase {

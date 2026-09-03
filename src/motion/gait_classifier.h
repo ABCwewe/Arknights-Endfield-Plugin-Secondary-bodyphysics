@@ -12,49 +12,101 @@ struct GaitClassification {
   bool landingDetected = false;
 };
 
-// Baseline rules (交接文档 §4.2, verified 2026-08-16):
-//   jump          -> Run params (2)  [gate first: idle_jump_* contains "idle"]
-//   _to_<target>  -> sprint=3 walk=1 run=2 idle=1 relax=0, unknown=1
-//   <x>_start     -> sprint_start=3 run_start=2 walk_start=1
-//   *_stop        -> 1 (stopping toward idle/walk)
-//   sprint/run/walk|move/idle|relax -> 3/2/1/0
-//   unknown       -> -1 (no oscillation)
-static int ClassifyClipName(const char *name) {
-  if (!name) return -1;
-  if (strstr(name, "zipline")) return GaitZipline;  // slide on zipline
-  if (strstr(name, "jump")) return GaitRun;  // baseline: jump uses Run params
+static bool IsLocomotionGait(int gait) {
+  return gait >= GaitWalk && gait <= GaitZipline;
+}
+
+// Fast onset is limited to accepted ground locomotion. Zipline keeps its
+// existing attack smoothing; stop/to-idle and Jump never arm onset.
+static bool IsGroundLocomotionOnsetEligible(int gait, bool transitionToIdle,
+                                             bool jumpDetected) {
+  return gait >= GaitWalk && gait <= GaitSprint && !transitionToIdle &&
+         !jumpDetected;
+}
+
+static bool CanWriteSynthetic(int gait, bool jumpDetected,
+                              bool jumpEnabled) {
+  if (!IsLocomotionGait(gait)) return false;
+  if (jumpDetected && !jumpEnabled) return false;
+  return true;
+}
+
+// Global locomotion whitelist.  Unknown clips fail closed (GaitNone); there
+// is deliberately no permanent blacklist for "special", "dash", etc. so
+// character-specific animation rules can opt those clips in later.
+static int ClassifyGlobalLocomotionClip(const char *name) {
+  if (!name) return GaitNone;
+  // Default policy: special/dash clips are not generic locomotion. They are
+  // still opt-in capable because character rules run before this function.
+  if (strstr(name, "special") || strstr(name, "dash")) return GaitNone;
+  if (strstr(name, "zipline")) return GaitZipline;
+  if (strstr(name, "jump")) return GaitRun;  // existing Jump gate semantics
+
   if (strstr(name, "_to_")) {
-    const char *t = strstr(name, "_to_") + 4;
-    if (strstr(t, "sprint")) return GaitSprint;
-    if (strstr(t, "walk")) return GaitWalk;
-    if (strstr(t, "run")) return GaitRun;
-    if (strstr(t, "idle")) return GaitWalk;   // -> idle uses walk params
-    if (strstr(t, "relax")) return GaitIdle;  // -> relax = idle family
-    return GaitWalk;  // unknown target — conservative walk
+    const char *target = strstr(name, "_to_") + 4;
+    if (strstr(target, "sprint")) return GaitSprint;
+    if (strstr(target, "run")) return GaitRun;
+    if (strstr(target, "walk") || strstr(target, "move")) return GaitWalk;
+    if (strstr(target, "idle")) {
+      // Only a locomotion -> idle transition is eligible for fast release.
+      if (strstr(name, "sprint") || strstr(name, "run") ||
+          strstr(name, "walk") || strstr(name, "move"))
+        return GaitWalk;
+    }
+    return GaitNone;
   }
+
   if (strstr(name, "start")) {
     if (strstr(name, "sprint")) return GaitSprint;
     if (strstr(name, "run")) return GaitRun;
-    return GaitWalk;
+    if (strstr(name, "walk") || strstr(name, "move")) return GaitWalk;
+    return GaitNone;
   }
-  if (strstr(name, "stop")) return GaitWalk;  // stopping toward idle/walk
+
+  if (strstr(name, "stop")) {
+    if (strstr(name, "sprint") || strstr(name, "run") ||
+        strstr(name, "walk") || strstr(name, "move"))
+      return GaitWalk;
+    return GaitNone;
+  }
+
   if (strstr(name, "sprint")) return GaitSprint;
   if (strstr(name, "run")) return GaitRun;
   if (strstr(name, "walk") || strstr(name, "move")) return GaitWalk;
-  if (strstr(name, "idle") || strstr(name, "relax")) return GaitIdle;
   return GaitNone;
 }
 
-static GaitClassification ClassifyClipNameFull(const char *name) {
+static int ClassifyClipName(const char *name,
+                            const CharacterProfile *profile = nullptr) {
+  if (!name) return GaitNone;
+  if (profile) {
+    const AnimationRule *bestRule = nullptr;
+    size_t bestLength = 0;
+    for (const AnimationRule &rule : profile->animationRules) {
+      if (!rule.contains.empty() && rule.contains.size() > bestLength &&
+          strstr(name, rule.contains.c_str())) {
+        bestRule = &rule;
+        bestLength = rule.contains.size();
+      }
+    }
+    if (bestRule) return bestRule->gait;
+  }
+  return ClassifyGlobalLocomotionClip(name);
+}
+
+static GaitClassification ClassifyClipNameFull(
+    const char *name, const CharacterProfile *profile = nullptr) {
   GaitClassification out;
-  out.gait = ClassifyClipName(name);
+  out.gait = ClassifyClipName(name, profile);
   if (!name) return out;
-  // to-idle fast release: stop clips and _to_idle transitions (baseline)
-  if (strstr(name, "stop") || strstr(name, "_to_idle"))
+  // Fast release is only meaningful for an accepted locomotion transition.
+  if (out.gait != GaitNone &&
+      (strstr(name, "stop") || strstr(name, "_to_idle")))
     out.transitionToIdle = true;
-  if (strstr(name, "jump")) out.jumpDetected = true;
-  // landing-only simplified jump (baseline: only the LAND clip drives it)
-  if (strstr(name, "jump") && strstr(name, "land"))
-    out.landingDetected = true;
+  if (out.gait != GaitNone && strstr(name, "jump")) {
+    out.jumpDetected = true;
+    // landing-only simplified jump (baseline: only the LAND clip drives it)
+    if (strstr(name, "land")) out.landingDetected = true;
+  }
   return out;
 }

@@ -9,9 +9,11 @@
 #include "../common/logger.h"
 #include "../common/safe_unity.h"
 #include "../runtime/runtime_paths.h"
+#include "bone_dump_json.h"
 
 static void BoneScannerDumpRecursive(void *transform, int depth, int maxDepth,
-                                     const char *keyword, FILE *f) {
+                                     const char *keyword, FILE *f,
+                                     bool *firstEntry) {
   if (!transform || depth > maxDepth) return;
   char name[256] = "";
   SafeGetObjectName(transform, name, sizeof(name));
@@ -20,7 +22,7 @@ static void BoneScannerDumpRecursive(void *transform, int depth, int maxDepth,
       ProbeLog("[BONE-SCAN] %*s%s\n", depth * 2, "", name);
   } else {
     ProbeLog("[BONE-SCAN] %*s%s\n", depth * 2, "", name);
-    if (f) fprintf(f, "{\"name\": \"%s\", \"depth\": %d}\n", name, depth);
+    if (f && firstEntry) BoneScannerWriteEntry(f, name, depth, *firstEntry);
   }
   __try {
     void *countBoxed = Invoke(g_transform_get_childCount, transform);
@@ -28,7 +30,9 @@ static void BoneScannerDumpRecursive(void *transform, int depth, int maxDepth,
     for (int i = 0; i < count && i < 200; i++) {
       void *params[] = {&i};
       void *child = Invoke(g_transform_GetChild, transform, params);
-      if (child) BoneScannerDumpRecursive(child, depth + 1, maxDepth, keyword, f);
+      if (child)
+        BoneScannerDumpRecursive(child, depth + 1, maxDepth, keyword, f,
+                                 firstEntry);
     }
   } __except (1) {
   }
@@ -43,6 +47,7 @@ static void BoneScannerRun(void *rootTransform, const char *keyword,
 
   // Full dumps (no keyword) also go to a file for the Manager.
   FILE *f = nullptr;
+  bool firstEntry = true;
   if (!keyword || !*keyword) {
     char path[512];
     if (RuntimePathsInit()) {
@@ -52,13 +57,17 @@ static void BoneScannerRun(void *rootTransform, const char *keyword,
       snprintf(file, sizeof(file), "%s\\%s.json", path,
                characterId && characterId[0] ? characterId : "unknown");
       f = fopen(file, "w");
-      if (f) fprintf(f, "{\n  \"character\": \"%s\",\n  \"bones\": [\n",
-                     characterId && characterId[0] ? characterId : "unknown");
+      if (f) {
+        fputs("{\n  \"character\": ", f);
+        BoneScannerWriteJsonString(
+            f, characterId && characterId[0] ? characterId : "unknown");
+        fputs(",\n  \"bones\": [\n", f);
+      }
     }
   }
-  BoneScannerDumpRecursive(rootTransform, 0, 40, keyword, f);
+  BoneScannerDumpRecursive(rootTransform, 0, 40, keyword, f, &firstEntry);
   if (f) {
-    fprintf(f, "  ]\n}\n");
+    fprintf(f, "\n  ]\n}\n");
     fclose(f);
     ProbeLog("[BONE-SCAN] dump written\n");
   }

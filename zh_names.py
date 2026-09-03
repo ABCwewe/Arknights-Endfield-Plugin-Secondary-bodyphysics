@@ -27,6 +27,8 @@ MAP = {
     "chr_0021_whiten": "\u57c3\u7279\u62c9",   # Estella 埃特拉
     "chr_0019_karin": "\u79cb\u6817",          # Akekuri 秋栗
     "chr_0022_bounda": "\u8424\u77f3",         # Fluorite 萤石
+    "chr_0034_typhoea": "\u63d0\u5f17\u6d1b\u65af",        # Typhoea 提弗洛斯
+    "chr_0027_tangtang": "\u6c64\u6c64",         # Tangtang 汤汤
 }
 
 path = sys.argv[1]

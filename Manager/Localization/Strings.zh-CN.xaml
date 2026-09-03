@@ -3,7 +3,6 @@
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
     <sys:String x:Key="C_advanced">进阶设置</sys:String>
     <sys:String x:Key="C_amplify_native">Amplify Native</sys:String>
-    <sys:String x:Key="C_amplitude_scale">幅度倍率</sys:String>
     <sys:String x:Key="C_apply">应用</sys:String>
     <sys:String x:Key="C_auto">Auto</sys:String>
     <sys:String x:Key="C_axis">运动坐标轴</sys:String>
@@ -28,7 +27,7 @@
     <sys:String x:Key="C_higher_slower_frequency_changes_lowe">数值越高，频率变化越平滑 · 数值越低，频率变化越快</sys:String>
     <sys:String x:Key="C_higher_smoother_transitions_lower_mo">数值越高，过渡越平滑 · 数值越低，过渡越快</sys:String>
     <sys:String x:Key="C_id_dev">ID (dev)</sys:String>
-    <sys:String x:Key="C_jump_legacy_landing_damped">跳跃 (旧版着陆阻尼)</sys:String>
+
     <sys:String x:Key="C_mode">生效模式</sys:String>
     <sys:String x:Key="C_native_amplify">原生增益</sys:String>
     <sys:String x:Key="C_original_off">Original (off)</sys:String>
@@ -81,7 +80,6 @@
     <sys:String x:Key="D_z">Z</sys:String>
     <sys:String x:Key="M_advanced">进阶参数</sys:String>
     <sys:String x:Key="M_amplify_native">Amplify Native</sys:String>
-    <sys:String x:Key="M_amplitude_scale">振幅缩放</sys:String>
     <sys:String x:Key="M_apply">应用</sys:String>
     <sys:String x:Key="M_auto">Auto</sys:String>
     <sys:String x:Key="M_axis">运动轴</sys:String>
@@ -105,6 +103,31 @@
     <sys:String x:Key="M_higher_for_motions_to_motions_smooth">越高 = 更平滑的过渡 · 越低 = 更快的响应</sys:String>
     <sys:String x:Key="M_higher_slower_frequency_changes_lowe">越高 = 更平滑的频率变化 · 越低 = 更快的响应</sys:String>
     <sys:String x:Key="M_jump_legacy_landing_damped">启用跳跃 (Jump) 功能（未完成）</sys:String>
+    <sys:String x:Key="M_jump_inertia">跳跃 / 惯性参数</sys:String>
+    <sys:String x:Key="M_jump_inertia_hint">逐角色跳跃参数 · 以游戏实测为准</sys:String>
+    <sys:String x:Key="M_jump_enabled">为该角色启用跳跃惯性</sys:String>
+    <sys:String x:Key="M_jump_takeoff_delay">起跳延迟（秒）</sys:String>
+    <sys:String x:Key="M_jump_rising_target">上升期向下目标（度）</sys:String>
+    <sys:String x:Key="M_jump_rising_target_hint">向下方向已锁定，负号不可删除。</sys:String>
+    <sys:String x:Key="M_jump_apex_falling_target">高点/下降期向上目标（度）</sys:String>
+    <sys:String x:Key="M_jump_apex_falling_target_hint">控制高点及下降阶段的向上角度。</sys:String>
+    <sys:String x:Key="M_jump_acceleration_response">加速度响应</sys:String>
+    <sys:String x:Key="M_jump_acceleration_response_hint">数值越大，下落时胸部越向上。</sys:String>
+    <sys:String x:Key="M_jump_acceleration_filter_tau">加速度滤波时间（秒）</sys:String>
+    <sys:String x:Key="M_jump_natural_frequency">弹簧频率（Hz）</sys:String>
+    <sys:String x:Key="M_jump_natural_frequency_hint">数值越低，落地冲击幅度越强。</sys:String>
+    <sys:String x:Key="M_jump_damping_ratio">弹簧阻尼比</sys:String>
+    <sys:String x:Key="M_jump_damping_ratio_hint">建议范围：0.3–0.6。</sys:String>
+    <sys:String x:Key="M_jump_landing_impulse_gain">落地冲击增益</sys:String>
+    <sys:String x:Key="M_jump_landing_impulse_gain_hint">数值越大，落地时胸部向下幅度越大。</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_amplitude">落地抖动幅度（度）</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_amplitude_hint">过渡到静止时的震荡幅度。</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_frequency">落地抖动频率（Hz）</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_damping_tau">落地衰减时间（秒）</sys:String>
+    <sys:String x:Key="M_jump_landing_shake_duration">落地抖动时长（秒）</sys:String>
+    <sys:String x:Key="M_jump_shake_preset">落地震荡预设</sys:String>
+    <sys:String x:Key="M_jump_shake_preset_hint">将衰减时间、震荡频率和时长作为一组固定参数设置。</sys:String>
+    <sys:String x:Key="M_jump_shake_preset_values">衰减 {0} 秒 · 频率 {1} Hz · 时长 {2} 秒</sys:String>
     <sys:String x:Key="M_main">主界面</sys:String>
     <sys:String x:Key="M_mode">模式</sys:String>
     <sys:String x:Key="M_native_amplify">原生增益</sys:String>

@@ -25,11 +25,12 @@ public class NotNullConverter : IValueConverter {
 // double <-> TextBox text (invariant culture; commit on focus loss)
 public class DoubleToTextConverter : IValueConverter {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is double d ? d.ToString("0.##", CultureInfo.InvariantCulture) : "0";
+        => value is double d ? d.ToString("R", CultureInfo.InvariantCulture) : "0";
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) {
         if (value is string s && double.TryParse(s, System.Globalization.NumberStyles.Float,
-                                                 CultureInfo.InvariantCulture, out double d))
+                                                 CultureInfo.InvariantCulture, out double d) &&
+            double.IsFinite(d))
             return d;
         Services.ChangeLog.Append("[UI] rejected input: \"" + value + "\"");
         return Binding.DoNothing;

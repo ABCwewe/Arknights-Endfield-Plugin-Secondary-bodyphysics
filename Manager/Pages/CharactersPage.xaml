@@ -161,7 +161,6 @@
                                 <RowDefinition Height="31" />
                                 <RowDefinition Height="31" />
                                 <RowDefinition Height="31" />
-                                <RowDefinition Height="31" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0"
@@ -207,17 +206,6 @@
                                            VerticalAlignment="Center" />
                             </Border>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0"
-                                       Text="{DynamicResource C_amplitude_scale}"
-                                       Style="{StaticResource CompactLabel}" />
-                            <TextBox Grid.Row="4" Grid.Column="1"
-                                     Height="26"
-                                     FontSize="10"
-                                     VerticalContentAlignment="Center"
-                                     TextAlignment="Right"
-                                     Text="{Binding Selected.AmpScale,
-                                                    Mode=TwoWay,
-                                                    Converter={StaticResource DoubleToText}}" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -343,13 +331,13 @@
                                      FontSize="10"
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
-                                     Text="{Binding Selected.ZiplineDown, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                                     Text="{Binding Selected.ZiplineAmp, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                         <TextBox Grid.Row="4" Grid.Column="2"
                                      Height="26" Margin="3"
                                      FontSize="10"
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
-                                     Text="{Binding Selected.ZiplineAmp, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                                     Text="{Binding Selected.ZiplineDown, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                         <TextBox Grid.Row="4" Grid.Column="3"
                                      Height="26" Margin="3"
                                      FontSize="10"
@@ -478,11 +466,6 @@
                                      Text="{Binding Selected.NativeFactor, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
                         </Grid>
 
-                        <CheckBox Content="{DynamicResource C_jump_legacy_landing_damped}"
-                                  Margin="0,7,0,0"
-                                  FontSize="10"
-                                  Foreground="Black"
-                                  IsChecked="{Binding Selected.JumpEnabled}" />
                     </StackPanel>
                 </Border>
 

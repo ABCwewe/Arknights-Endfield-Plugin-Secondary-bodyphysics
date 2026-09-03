@@ -39,6 +39,7 @@ static const char *GaitName(int gait) {
     case 1: return "walk";
     case 2: return "run";
     case 3: return "sprint";
+    case 4: return "zipline";
     default: return "none";
   }
 }

@@ -8,9 +8,10 @@
 //     presets/<name>.json
 //     runtime/config.json, runtime_status.json, developer_command.json
 //     developer/...
-//     logs/manager.log, runtime.log
+//     logs/ (reserved data directory; current Runtime logs remain in plugin/)
 #include <windows.h>
 #include <cstdio>
+#include <cstring>
 
 static char g_runtimeRoot[512] = {0};  // e.g. E:\...\Endfield Game\SecondaryMotion
 static HMODULE g_hEiemModule = nullptr;  // set by DllMain (DLL_PROCESS_ATTACH)
@@ -44,6 +45,23 @@ static bool RuntimePathsInit() {
 
 static void RuntimePath(char *out, size_t sz, const char *rel) {
   snprintf(out, sz, "%s\\%s", g_runtimeRoot, rel);
+}
+
+// Resolve a file in <game root>\\plugin from the already-derived
+// <game root>\\SecondaryMotion root. Used only by legacy marker compatibility.
+static bool RuntimePluginPath(char *out, size_t sz, const char *fileName) {
+  if (!out || sz == 0 || !fileName || !RuntimePathsInit()) return false;
+  char gameRoot[512];
+  snprintf(gameRoot, sizeof(gameRoot), "%s", g_runtimeRoot);
+  char *back = strrchr(gameRoot, '\\');
+  char *forward = strrchr(gameRoot, '/');
+  char *slash = back;
+  if (forward && (!slash || forward > slash)) slash = forward;
+  if (!slash) return false;
+  *slash = 0;
+  int written =
+      snprintf(out, sz, "%s\\plugin\\%s", gameRoot, fileName);
+  return written > 0 && (size_t)written < sz;
 }
 
 // Create the SecondaryMotion subdirectories (idempotent, startup only).

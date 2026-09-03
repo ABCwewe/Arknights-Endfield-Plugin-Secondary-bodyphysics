@@ -14,6 +14,24 @@ struct ClipSample {
   char name[128] = {0};
 };
 
+enum class ClipReadFailure : uint32_t {
+  None = 0,
+  InvalidInput,
+  ResolveFailed,
+  CountInvokeFailed,
+  ReportedCountInvalid,
+  InfoInvokeFailed,
+  AccessException,
+};
+
+struct ClipReadStatus {
+  bool readOk = false;
+  int reportedCount = -1;
+  size_t parsedCount = 0;
+  bool truncated = false;
+  ClipReadFailure failure = ClipReadFailure::None;
+};
+
 // FindMethod variant requiring the first parameter type name (baseline
 // ProbeFindMethodWithFirstParamType semantics — the plain FindMethod(…,1)
 // variant returned null for GetCurrentAnimatorClipInfo on this game).
@@ -68,23 +86,44 @@ public:
     return mCount_ && mInfo_ && mId2Clip_;
   }
 
-  // Read layer-0 clips into out[] (max capacity).  Returns count read.
+  // Read layer-0 clips into out[] (max capacity). The optional status reports
+  // the existing read outcome without issuing any additional Animator calls.
   bool ReadLayer0(void *animator, ClipSample *out, size_t capacity,
-                  size_t &count) {
+                  size_t &count, ClipReadStatus *status = nullptr) {
     count = 0;
-    if (!animator || capacity == 0) return false;
-    if (!EnsureResolved(animator)) return false;
+    if (status) *status = ClipReadStatus();
+    if (!animator || !out || capacity == 0) {
+      if (status) status->failure = ClipReadFailure::InvalidInput;
+      return false;
+    }
+    if (!EnsureResolved(animator)) {
+      if (status) status->failure = ClipReadFailure::ResolveFailed;
+      return false;
+    }
     __try {
       int layer = 0;
       void *args[] = {&layer};
       void *exc = nullptr;
 
       void *countRes = il2cpp_runtime_invoke(mCount_, animator, args, &exc);
+      if (!countRes || exc) {
+        if (status) status->failure = ClipReadFailure::CountInvokeFailed;
+        return false;
+      }
       int n = UnboxInt32(countRes);
-      if (n <= 0 || n > 64) return false;
+      if (status) status->reportedCount = n;
+      if (n <= 0 || n > 64) {
+        if (status) status->failure = ClipReadFailure::ReportedCountInvalid;
+        return false;
+      }
+      if (status) status->truncated = static_cast<size_t>(n) > capacity;
 
+      exc = nullptr;
       void *infoArr = il2cpp_runtime_invoke(mInfo_, animator, args, &exc);
-      if (!infoArr || exc) return false;
+      if (!infoArr || exc) {
+        if (status) status->failure = ClipReadFailure::InfoInvokeFailed;
+        return false;
+      }
 
       size_t nRead = 0;
       for (int i = 0; i < n && nRead < capacity; i++) {
@@ -123,8 +162,14 @@ public:
         nRead++;
       }
       count = nRead;
+      if (status) {
+        status->readOk = true;
+        status->parsedCount = nRead;
+        status->failure = ClipReadFailure::None;
+      }
       return true;
     } __except (1) {
+      if (status) status->failure = ClipReadFailure::AccessException;
       return false;
     }
   }

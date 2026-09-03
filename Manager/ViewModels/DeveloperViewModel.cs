@@ -1,5 +1,6 @@
 // ViewModels/DeveloperViewModel.cs — Developer Mode (V2 §16-28):
-// Detect -> Scan -> Bones -> Axis Test -> Tune -> Validate -> Save.
+// Detect -> Scan -> pick Right/Left bones -> Save. Axis Test remains an
+// optional diagnostic and is not required for onboarding or persisted by Save.
 // All commands go through the runtime developer_command.json channel.
 using System;
 using System.Collections.Generic;
@@ -178,10 +179,9 @@ public class DeveloperViewModel : ViewModelBase, IDisposable {
         if (supported) {
             var c = _ctx.Find(id);
             Validation.Add("Axis: " + (c != null && c.Axis.Length > 0 ? "PASS (" + c.Axis + ")" : "PASS (auto)"));
-            Validation.Add("Scale finite: " + (c != null && double.IsFinite(c.AmpScale) ? "PASS" : "FAIL"));
             bool gaitOk = c != null;
             if (c != null)
-                foreach (var f in c.Freq) if (f <= 0 || double.IsNaN(f)) gaitOk = false;
+                foreach (var f in c.Freq) if (!double.IsFinite(f)) gaitOk = false;
             Validation.Add("Gait parameters: " + (gaitOk ? "PASS" : "FAIL"));
         }
         bool allPass = true;
@@ -213,7 +213,7 @@ public class DeveloperViewModel : ViewModelBase, IDisposable {
             var data = existing ?? new CharacterData { Id = id };
             data.DisplayName = display;
             // NEW characters inherit Aurora's CURRENT params (user-tuned)
-            // as their default template: gait/envelope/scale/mode/jump.
+            // as their default template: gait/envelope/mode/jump.
             // Existing saves keep their own params (only name/bones update).
             if (existing == null) {
                 var aurora = _ctx.Find("chr_0014_aurora");
@@ -221,13 +221,24 @@ public class DeveloperViewModel : ViewModelBase, IDisposable {
                     data.Amp = (double[])aurora.Amp.Clone();
                     data.AmpDown = (double[])aurora.AmpDown.Clone();
                     data.Freq = (double[])aurora.Freq.Clone();
-                    data.AmpScale = aurora.AmpScale;
                     data.EnvAttack = aurora.EnvAttack;
                     data.EnvFreq = aurora.EnvFreq;
                     data.EnvIdle = aurora.EnvIdle;
                     data.Mode = aurora.Mode;
                     data.NativeFactor = aurora.NativeFactor;
                     data.JumpEnabled = aurora.JumpEnabled;
+                    data.JumpAmplitude = aurora.JumpAmplitude;
+                    data.JumpDampingTau = aurora.JumpDampingTau;
+                    data.JumpFrequency = aurora.JumpFrequency;
+                    data.JumpMaxDuration = aurora.JumpMaxDuration;
+                    data.JumpTakeoffDelay = aurora.JumpTakeoffDelay;
+                    data.JumpRisingTarget = aurora.JumpRisingTarget;
+                    data.JumpApexFallingTarget = aurora.JumpApexFallingTarget;
+                    data.JumpAccelerationResponse = aurora.JumpAccelerationResponse;
+                    data.JumpAccelerationFilterTau = aurora.JumpAccelerationFilterTau;
+                    data.JumpNaturalFrequency = aurora.JumpNaturalFrequency;
+                    data.JumpDampingRatio = aurora.JumpDampingRatio;
+                    data.JumpLandingImpulseGain = aurora.JumpLandingImpulseGain;
                 }
             }
             ChangeLog.Append("[Character] save: " + id + " name=" + display +
