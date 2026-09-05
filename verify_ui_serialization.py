@@ -119,8 +119,12 @@ require("s_configRecorderStarted" in plugin,
 require('g_recFile || MarkerPresent("record_test.txt")' not in plugin,
         "diagnostics recorder must not require an already-open file or marker")
 recorder = text("src/diagnostics/transform_recorder.h")
-require('developer\\\\breast_record.csv' in recorder,
-        "recorder output must use the runtime developer directory")
+recorder_policy = text("src/diagnostics/transform_recorder_policy.h")
+require("kTransformRecorderLatestFile" in recorder and
+        'developer\\\\breast_record.csv' in recorder_policy,
+        "recorder latest output must use the runtime developer directory")
+require("BuildTransformRecorderFileName" in recorder,
+        "recorder must preserve each long capture under a unique session filename")
 require('plugin/breast_record.csv' not in recorder,
         "recorder must not depend on process working directory")
 require("kMarkerDir" not in plugin,

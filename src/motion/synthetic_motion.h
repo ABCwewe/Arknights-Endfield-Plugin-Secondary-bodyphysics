@@ -70,6 +70,12 @@ struct SyntheticMotion {
         angle = 0.0f;
     }
     angle *= c.axisSign;
+    // Publish a read-only snapshot for the transform recorder.  Motion still
+    // uses the envelope above directly; these fields never feed computation.
+    c.synthetic.ampEnv = envelope.Amplitude();
+    c.synthetic.downEnv = envelope.DownAmplitude();
+    c.synthetic.freqEnv = envelope.Frequency();
+    c.synthetic.phase = envelope.Phase();
     return angle;
   }
 

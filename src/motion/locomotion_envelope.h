@@ -61,6 +61,7 @@ struct LocomotionEnvelope {
 
   float Amplitude() const { return ampEnv; }
   float DownAmplitude() const { return downEnv; }
+  float Frequency() const { return freqEnv; }
   float Phase() const { return (float)phase; }
 
   void Reset() {

@@ -17,6 +17,7 @@
 #include "src/diagnostics/bone_dump_json.h"
 #include "src/diagnostics/movement_signal_types.h"
 #include "src/diagnostics/jump_phase_a_probe.h"
+#include "src/diagnostics/transform_recorder_policy.h"
 
 static int g_fail = 0;
 static int g_pass = 0;
@@ -966,6 +967,45 @@ static void TestJumpInertialSource() {
         !airAfter.valid && airAfter.state == JumpInertialState::NativeOnly &&
             Near(airAfter.angleRad, 0.0f));
 
+  // Regression: a jump that resolves into an attack/skill clip (no "land"
+  // tail) must be excluded from inertia.  An attack clip mid-jump force-
+  // releases the epoch immediately, so the chest never freezes even though
+  // no landing edge ever arrives.
+  JumpInertialSource atkJump;
+  JumpInertialOutput atkStart = atkJump.Tick(
+      10000, JumpSignal(1, 10000, 10.0f, true, false), tuning, true);
+  CHECK("attack-exclusion: a jump still arms an air phase on jump_start",
+        atkStart.valid);
+  JumpLiveSignal atkSig = JumpSignal(2, 10016, 8.0f, false, false);
+  atkSig.attackActive = true;  // current clip is an attack/skill
+  JumpInertialOutput atkHit = atkJump.Tick(10016, atkSig, tuning, true);
+  CHECK("attack-exclusion: attack clip does not arm an air phase",
+        !atkHit.valid && atkHit.state == JumpInertialState::NativeOnly);
+  JumpInertialOutput atkAfter = atkJump.Tick(
+      10032, JumpSignal(3, 10032, -12.0f, false, false), tuning, true);
+  CHECK("attack-exclusion: epoch stays released and never refreezes",
+        !atkAfter.valid && atkAfter.state == JumpInertialState::NativeOnly);
+
+  // Regression: a jump that resolves into a zipline traversal
+  // (interact_zipline_*, which never carries a "land" tail) is the same
+  // no-landing-tail endpoint as an attack, so it must force-release the epoch
+  // immediately — otherwise the FSM would hang and freeze the chest at the
+  // converged rising/apex angle on dismount.
+  JumpInertialSource zipJump;
+  JumpInertialOutput zipStart = zipJump.Tick(
+      10000, JumpSignal(1, 10000, 10.0f, true, false), tuning, true);
+  CHECK("zipline-exclusion: a jump still arms an air phase on jump_start",
+        zipStart.valid);
+  JumpLiveSignal zipSig = JumpSignal(2, 10016, 8.0f, false, false);
+  zipSig.ziplineActive = true;  // current clip is a zipline traversal
+  JumpInertialOutput zipHit = zipJump.Tick(10016, zipSig, tuning, true);
+  CHECK("zipline-exclusion: zipline clip does not arm an air phase",
+        !zipHit.valid && zipHit.state == JumpInertialState::NativeOnly);
+  JumpInertialOutput zipAfter = zipJump.Tick(
+      10032, JumpSignal(3, 10032, -12.0f, false, false), tuning, true);
+  CHECK("zipline-exclusion: epoch stays released and never refreezes",
+        !zipAfter.valid && zipAfter.state == JumpInertialState::NativeOnly);
+
   JumpConfig longShake = tuning;
   longShake.amplitudeDeg = 40.0f;
   longShake.dampingTauSec = 0.7f;
@@ -1026,6 +1066,42 @@ static void TestJumpInertialSource() {
                   false).valid);
 }
 
+// ---------- transform recorder diagnostics contract ----------
+static void TestTransformRecorderPolicy() {
+  printf("[TRANSFORM RECORDER]\n");
+  CHECK("recorder keeps at least a 120-second 60fps window",
+        kTransformRecorderMaxFrames >= 7200);
+  CHECK("recorder does not stop at the old 1800-frame boundary",
+        !TransformRecorderShouldAutoStop(1800));
+  CHECK("recorder stops at its configured long-window boundary",
+        TransformRecorderShouldAutoStop(kTransformRecorderMaxFrames));
+
+  char first[128] = {0};
+  char second[128] = {0};
+  BuildTransformRecorderFileName(first, sizeof(first), 2026, 9, 5, 12, 55,
+                                 24, 100);
+  BuildTransformRecorderFileName(second, sizeof(second), 2026, 9, 5, 12,
+                                 55, 24, 101);
+  CHECK("recorder session filenames are unique",
+        first[0] && second[0] && strcmp(first, second) != 0);
+  CHECK("recorder session filename is recognizable",
+        strstr(first, "breast_record_20260905_125524_100.csv") != nullptr);
+
+  CHECK("recorder CSV carries pre-write pose",
+        strstr(kTransformRecorderCsvHeader, "preRx,preRy,preRz,preRw") !=
+            nullptr);
+  CHECK("recorder CSV carries intended target",
+        strstr(kTransformRecorderCsvHeader,
+               "targetRx,targetRy,targetRz,targetRw") != nullptr);
+  CHECK("recorder CSV carries actual post-write pose",
+        strstr(kTransformRecorderCsvHeader,
+               "actualRx,actualRy,actualRz,actualRw") != nullptr);
+  CHECK("recorder CSV carries oscillator state",
+        strstr(kTransformRecorderCsvHeader,
+               "phase_rad,amp_env_deg,down_env_deg,freq_env_hz,synthetic_angle_deg") !=
+            nullptr);
+}
+
 int main() {
   printf("=== SecondaryMotion V2 verification ===\n\n");
   TestJson();
@@ -1040,6 +1116,7 @@ int main() {
   TestDevCommandRevision();
   TestJumpPhaseAProbe();
   TestJumpInertialSource();
+  TestTransformRecorderPolicy();
 
   printf("\n=== RESULT: %d passed, %d failed ===\n", g_pass, g_fail);
   if (g_fail == 0) {

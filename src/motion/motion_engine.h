@@ -205,6 +205,7 @@ private:
         angle = jumpOut.angleRad * active_.axisSign *
                 AutomaticJumpDirection(active_.axis);
       }
+      active_.synthetic.outAngleRad = angle;
 
       if (jumpOut.acceptedStart)
         ProbeLog("[JUMP-E] epoch=%u Rising accepted\n", jumpOut.eventEpoch);

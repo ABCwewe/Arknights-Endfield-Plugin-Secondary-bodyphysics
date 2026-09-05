@@ -67,6 +67,23 @@ public:
     const bool newSample = signal.serial != lastSerial_;
     if (newSample) UpdateContinuousSignal(signal, tuning);
 
+    // A jump that resolves into an attack/skill clip (e.g. battle_air_atk_*,
+    // battle_attack_*, *_skill_*) never reaches a landing tail, so the FSM
+    // would otherwise hang in Rising/Apex and freeze the chest at the
+    // converged angle.  Detect the attack from the deterministic clip name and
+    // force-release the epoch before any state advance — this is the intended
+    // "jump attack excluded from inertia" boundary.
+    if (signal.attackActive) {
+      CancelEpoch();
+    }
+    // A jump that resolves into a zipline traversal (interact_zipline_*) is the
+    // same "no landing tail" endpoint as an attack: the clip family never
+    // produces a jump_land clip, so without a forced release the FSM would hang
+    // in Rising/Apex and freeze the chest at the converged angle on dismount.
+    if (signal.ziplineActive) {
+      CancelEpoch();
+    }
+
     // Advance the state that existed over the preceding frame. Current sample
     // edges are processed afterwards, so impulses cannot rewrite the past.
     float dt = 0.0f;

@@ -15,4 +15,6 @@ struct JumpLiveSignal {
   bool teleported = false;
   bool jumpStartActive = false;
   bool landingActive = false;
+  bool attackActive = false;  // current clip is an attack/skill (no landing tail)
+  bool ziplineActive = false; // current clip is a zipline traversal (no landing tail)
 };

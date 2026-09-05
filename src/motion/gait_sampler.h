@@ -62,10 +62,23 @@ static bool PhaseDEntityAnimatorPairValid(
   }
 }
 
+// A clip whose name marks an attack/skill (e.g. battle_air_atk_*,
+// battle_attack_*, *_skill_*, combo_skill_air) never resolves in a landing
+// tail, so a jump that resolves into one must not keep the inertial epoch
+// armed.  Detected from the deterministic clip name (not physics), so it is
+// impervious to terrain, mid-air re-jumps and enemy knockback.
+static bool IsAttackClip(const char *name) {
+  if (!name) return false;
+  return strstr(name, "attack") || strstr(name, "atk") ||
+         strstr(name, "skill") || strstr(name, "combo") ||
+         strstr(name, "ult") || strstr(name, "_air_");
+}
+
 static void PublishJumpLiveSignal(ActiveCharacterRuntime &active, DWORD now,
                                   const MovementSignalSample &movement,
                                   bool clipReadValid, bool jumpStartActive,
-                                  bool landingActive) {
+                                  bool landingActive, bool attackActive,
+                                  bool ziplineActive) {
   uint32_t next = active.jumpSignal.serial + 1u;
   if (next == 0) next = 1;
   active.jumpSignal.serial = next;
@@ -80,6 +93,8 @@ static void PublishJumpLiveSignal(ActiveCharacterRuntime &active, DWORD now,
       movement.teleportedValid && movement.teleportedThisFrame;
   active.jumpSignal.jumpStartActive = jumpStartActive;
   active.jumpSignal.landingActive = landingActive;
+  active.jumpSignal.attackActive = attackActive;
+  active.jumpSignal.ziplineActive = ziplineActive;
 }
 
 static void JumpPhaseAObserveReadFailure(
@@ -204,7 +219,8 @@ public:
       movement = g_movementSignalProbe.Sample(g_mainCharEntity, identityValid);
     }
     if (!reader_.ReadLayer0(callerAnimator, clips, 8, count, &readStatus)) {
-      PublishJumpLiveSignal(active, now, movement, false, false, false);
+      PublishJumpLiveSignal(active, now, movement, false, false, false, false,
+                            false);
       JumpPhaseAObserveReadFailure(active, cfg, now, readStatus, movement);
       return;
     }
@@ -214,6 +230,8 @@ public:
     bool transToIdle = false;
     bool landing = false;
     bool jumpStart = false;
+    bool attackActive = false;
+    bool ziplineActive = false;
     active.jumpDetected = false;  // recomputed every sample
     for (size_t i = 0; i < count; i++) {
       GaitClassification cls =
@@ -226,12 +244,15 @@ public:
       if (cls.landingDetected) landing = true;
       if (cls.jumpDetected && strstr(clips[i].name, "jump_start"))
         jumpStart = true;
+      if (IsAttackClip(clips[i].name)) attackActive = true;
+      if (strstr(clips[i].name, "zipline")) ziplineActive = true;
       if (cls.jumpDetected) active.jumpDetected = true;
     }
     active.currentGait = bestGait;
     active.transitionToIdle = transToIdle;
     active.jumpActive = landing;
-    PublishJumpLiveSignal(active, now, movement, true, jumpStart, landing);
+    PublishJumpLiveSignal(active, now, movement, true, jumpStart, landing,
+                          attackActive, ziplineActive);
     JumpPhaseAObserveClips(active, cfg, now, readStatus, clips, count,
                            active.jumpDetected, landing, movement);
 

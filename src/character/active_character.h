@@ -11,6 +11,7 @@
 
 struct SyntheticRuntime {
   float ampEnv = 0.0f;
+  float downEnv = 0.0f;
   float freqEnv = 1.5f;
   double phase = 0.0;
   double lastAdvanceTime = 0.0;
