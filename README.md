@@ -581,7 +581,7 @@ A technical character profile can contain:
 - special locomotion `animation_rules`
 - complete generic defaults for gait, envelope, Jump, and native amplification
 
-The current repository contains 19 official character profiles. This is a data count, not a runtime limit.
+The current repository contains 20 official character profiles. This is a data count, not a runtime limit.
 
 Character IDs remain stable internal keys. Display names may be localized, but localized names are never used as JSON keys or runtime identity.
 

@@ -129,6 +129,10 @@ public partial class App : Application {
                 diag.AppendLine("status_age_s: " +
                     (DateTime.Now - File.GetLastWriteTime(stPath)).TotalSeconds.ToString("0.0"));
 
+            // Add the official Typhoeus profile to older installations once.
+            // Existing user-recorded DB/preset objects are never replaced.
+            diag.AppendLine("typhoeus_official_v1: " +
+                TyphoeusOfficialMigration.Apply(ManagerDir, dataRoot));
             // v3 update: replace only the official Jump blocks once. Existing
             // gait tuning, bones, names, custom characters and other data stay.
             diag.AppendLine("jump_defaults_v3: " +

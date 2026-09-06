@@ -148,6 +148,36 @@ require("PresetJumpNeedsOfficialDefaults" in jump_migration,
 require("if (!PresetJumpNeedsOfficialDefaults(targetEntry[\"jump\"], genericJump))" in jump_migration,
         "Jump migration must preserve an existing customized Jump block")
 
+# Typhoeus became an official fixed character after the original one-shot v3
+# migration.  A separate additive migration must install a missing profile but
+# leave any user-recorded DB/preset object byte-for-meaning untouched.
+typh_id = "chr_0034_typhoea"
+official_db = json.loads(text("SecondaryMotion/data/characters.default.json"))["characters"]
+official_default = json.loads(text("SecondaryMotion/presets/Default.json"))["characters"]
+official_user = json.loads(text("SecondaryMotion/presets/User.json"))["characters"]
+require(typh_id in official_db, "official DB must contain Typhoeus")
+require(official_db[typh_id].get("display_name") == "Typhoeus",
+        "official Typhoeus display name must remain canonical")
+require(typh_id in official_default, "official Default preset must contain Typhoeus")
+require(typh_id in official_user, "packaged User preset must contain Typhoeus")
+require(official_user[typh_id] == official_default[typh_id],
+        "new User template must carry the official Typhoeus preset object")
+typh_migration_path = ROOT / "Manager/Services/TyphoeusOfficialMigration.cs"
+require(typh_migration_path.exists(),
+        "Typhoeus needs an independent additive migration for existing installs")
+typh_migration = text("Manager/Services/TyphoeusOfficialMigration.cs")
+require(".typhoeus_official_v1" in typh_migration,
+        "Typhoeus migration needs its own one-shot marker")
+require("if (target[CharacterId] != null)" in typh_migration,
+        "Typhoeus migration must preserve an existing user-recorded object")
+require("target[CharacterId] = officialEntry.DeepClone();" in typh_migration,
+        "Typhoeus migration must add the exact official object when missing")
+app_source = text("Manager/App.xaml.cs")
+require("TyphoeusOfficialMigration.Apply(ManagerDir, dataRoot)" in app_source and
+        app_source.index("TyphoeusOfficialMigration.Apply(ManagerDir, dataRoot)") <
+        app_source.index("Ctx = new AppCtx(dataRoot, ManagerDir)"),
+        "Typhoeus migration must run before Manager mirror/model load")
+
 hotfix_path = ROOT / "Manager/Services/JumpDefaultsV301Hotfix.cs"
 require(hotfix_path.exists(),
         "3.0.1 must carry the one-shot Default Jump correction")
@@ -170,6 +200,32 @@ require("RecoverInvalidActivePreset(Presets)" in appctx,
         "Manager startup must repair stale invalid active presets")
 require("if (!Presets.IsSelectablePreset(name))" in appctx,
         "SwitchPreset must reject invalid or missing preset names before writing config")
+
+# The next package after the current v3.1.1 release is v3.1.2.  Manager and
+# native PE metadata must identify that same build, and package assembly must
+# stop instead of zipping after a required copy/localization failure.
+manager_project = text("Manager/SecondaryMotion.Manager.csproj")
+for expected in [
+    "<Version>3.1.2</Version>",
+    "<AssemblyVersion>3.1.2.0</AssemblyVersion>",
+    "<FileVersion>3.1.2.0</FileVersion>",
+]:
+    require(expected in manager_project, "Manager release metadata must be 3.1.2")
+native_version = text("src/version.rc")
+for expected in [
+    "#define SM_VERSION_MAJOR 3",
+    "#define SM_VERSION_MINOR 1",
+    "#define SM_VERSION_PATCH 2",
+    '"Endfield Secondary Motion Tool v3.1.2"',
+]:
+    require(expected in native_version, "native release metadata must be 3.1.2")
+require("contains 20 official character profiles" in text("README.md"),
+        "README official profile count must match the 20-entry DB")
+assembler = text("assemble_one.bat")
+require(assembler.count("|| goto :assemble_failed") >= 10,
+        "package assembly must fail closed on required copy/localization errors")
+require(":assemble_failed" in assembler,
+        "package assembly needs one explicit failure exit")
 
 # Jump Phase A is a read-only observer at the existing 20 Hz gait seam.
 reader = text("src/il2cpp/animator_clip_reader.h")

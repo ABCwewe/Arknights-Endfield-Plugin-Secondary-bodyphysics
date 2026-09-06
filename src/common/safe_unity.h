@@ -26,6 +26,39 @@ static inline void SafeSetLocalRotation(void *transform, Quat q) {
   }
 }
 
+static inline Quat SafeGetWorldRotation(void *transform) {
+  if (!transform || !g_transform_get_rotation) return QuatIdentity();
+  __try {
+    void *boxed = Invoke(g_transform_get_rotation, transform);
+    if (!boxed) return QuatIdentity();
+    float *d = (float *)((char *)boxed + IL2CPP_BOXED_DATA);
+    return {d[0], d[1], d[2], d[3]};
+  } __except (1) {
+    return QuatIdentity();
+  }
+}
+
+static inline Vec3 SafeGetWorldPosition(void *transform) {
+  if (!transform || !g_transform_get_position) return {0, 0, 0};
+  __try {
+    void *boxed = Invoke(g_transform_get_position, transform);
+    if (!boxed) return {0, 0, 0};
+    float *d = (float *)((char *)boxed + IL2CPP_BOXED_DATA);
+    return {d[0], d[1], d[2]};
+  } __except (1) {
+    return {0, 0, 0};
+  }
+}
+
+static inline void *SafeGetParent(void *transform) {
+  if (!transform || !g_transform_get_parent) return nullptr;
+  __try {
+    return Invoke(g_transform_get_parent, transform);
+  } __except (1) {
+    return nullptr;
+  }
+}
+
 static inline void *SafeGetComponentTransform(void *component) {
   if (!component || !g_component_get_transform) return nullptr;
   __try {

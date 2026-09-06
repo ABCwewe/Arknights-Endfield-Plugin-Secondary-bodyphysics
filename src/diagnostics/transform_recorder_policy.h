@@ -12,7 +12,16 @@ static constexpr const char *kTransformRecorderCsvHeader =
     "freq_env_hz,synthetic_angle_deg,character_id,axis,axis_sign,"
     "preRx,preRy,preRz,preRw,preLx,preLy,preLz,preLw,"
     "targetRx,targetRy,targetRz,targetRw,targetLx,targetLy,targetLz,targetLw,"
-    "actualRx,actualRy,actualRz,actualRw,actualLx,actualLy,actualLz,actualLw";
+    "actualRx,actualRy,actualRz,actualRw,actualLx,actualLy,actualLz,actualLw,"
+    "worldRotRx,worldRotRy,worldRotRz,worldRotRw,"
+    "worldRotLx,worldRotLy,worldRotLz,worldRotLw,"
+    "worldPosRx,worldPosRy,worldPosRz,worldPosLx,worldPosLy,worldPosLz,"
+    "parentLocalRx,parentLocalRy,parentLocalRz,parentLocalRw,"
+    "parentLocalLx,parentLocalLy,parentLocalLz,parentLocalLw,"
+    "parentWorldRx,parentWorldRy,parentWorldRz,parentWorldRw,"
+    "parentWorldLx,parentWorldLy,parentWorldLz,parentWorldLw,"
+    "grandWorldRx,grandWorldRy,grandWorldRz,grandWorldRw,"
+    "grandWorldLx,grandWorldLy,grandWorldLz,grandWorldLw";
 
 static inline bool TransformRecorderShouldAutoStop(int frames) {
   return frames >= kTransformRecorderMaxFrames;

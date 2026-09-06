@@ -2,7 +2,7 @@
 // motion/synthetic_motion.h — synthetic gait oscillation computation
 // (baseline Mode 2 / ProbeSpringAdvance math, review #11 semantics):
 //   angle = ampEnv(t) * sin(phase(t))          [or jump curve]
-//   target = currentNative × dq(axis, angle)
+//   target = lowPass(currentNative) × dq(axis, angle)
 // The caller (MotionEngine) owns read/write timing; this module is pure math
 // + envelope state so the "unconditional full compute per callback" rule
 // stays intact without duplicating logic.
@@ -79,17 +79,22 @@ struct SyntheticMotion {
     return angle;
   }
 
-  // Compose the absolute target quaternion: currentNative × dq(axis, angle).
-  // Reads the CURRENT live rotation (baseline: read fresh every callback).
+  // Compose the absolute synthetic target on a slow native pose base.  The
+  // current pose is still sampled fresh, but its locomotion-rate oscillation
+  // is filtered before applying the independent synthetic oscillator.
   static void ComposeTargets(ActiveCharacterRuntime &c, float angleRad,
+                             bool filterNativeOscillation,
                              Quat &outR, Quat &outL) {
     Quat curR = SafeGetLocalRotation(c.bones.breastR);
     Quat curL = SafeGetLocalRotation(c.bones.breastL);
     c.synthetic.lastNativeR = curR;
     c.synthetic.lastNativeL = curL;
-    Quat dq = QuatAxisAngle((int)c.axis, angleRad);
-    outR = QuatMul(curR, dq);
-    outL = QuatMul(curL, dq);
+    if (filterNativeOscillation)
+      c.synthetic.baseFilter.ComposeLive(curR, curL, (int)c.axis, angleRad,
+                                         outR, outL);
+    else
+      c.synthetic.baseFilter.ComposeDirect(curR, curL, (int)c.axis, angleRad,
+                                           outR, outL);
   }
 
   static float GaitAmplitude(const CharacterProfile &p, int gait) {

@@ -240,6 +240,8 @@ static void *g_transformClass = nullptr;
 static void *g_animatorClass = nullptr;
 static void *g_transform_get_localRotation = nullptr;
 static void *g_transform_set_localRotation = nullptr;
+static void *g_transform_get_rotation = nullptr;
+static void *g_transform_get_position = nullptr;
 static void *g_transform_get_childCount = nullptr;
 static void *g_transform_GetChild = nullptr;
 static void *g_transform_get_parent = nullptr;
@@ -260,6 +262,8 @@ static bool ResolveCoreUnitySymbols() {
   if (!g_transformClass) { Log("[REFLECT] Transform class NOT found"); return false; }
   g_transform_get_localRotation = FindMethod(g_transformClass, "get_localRotation", 0);
   g_transform_set_localRotation = FindMethod(g_transformClass, "set_localRotation", 1);
+  g_transform_get_rotation = FindMethod(g_transformClass, "get_rotation", 0);
+  g_transform_get_position = FindMethod(g_transformClass, "get_position", 0);
   g_transform_get_childCount = FindMethod(g_transformClass, "get_childCount", 0);
   g_transform_GetChild = FindMethod(g_transformClass, "GetChild", 1);
   g_transform_get_parent = FindMethod(g_transformClass, "get_parent", 0);
@@ -281,5 +285,8 @@ static bool ResolveCoreUnitySymbols() {
       (void *)g_transform_set_localRotation, (void *)g_transform_set_localRotation,
       (void *)g_object_get_name, (void *)g_component_get_transform,
       ok ? "PASS" : "FAIL");
+  Log("[REFLECT] recorder optional: worldRot=%p worldPos=%p parent=%p",
+      (void *)g_transform_get_rotation, (void *)g_transform_get_position,
+      (void *)g_transform_get_parent);
   return ok;
 }

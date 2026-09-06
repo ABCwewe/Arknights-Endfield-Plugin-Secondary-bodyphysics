@@ -6,6 +6,7 @@
 #include "../common/logger.h"
 #include "../config/config_loader.h"  // ConfigSnapshot (profile binding)
 #include "../motion/jump_live_signal.h"
+#include "../motion/synthetic_base_filter.h"
 #include "bone_resolver.h"
 #include "character_identity.h"
 
@@ -20,6 +21,7 @@ struct SyntheticRuntime {
   float outAngleRad = 0.0f;
   Quat lastNativeR = QuatIdentity();
   Quat lastNativeL = QuatIdentity();
+  SyntheticBaseFilter baseFilter;
   Quat targetR = QuatIdentity();
   Quat targetL = QuatIdentity();
   bool targetValid = false;

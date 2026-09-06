@@ -12,6 +12,7 @@
 #include "src/config/config_validator.h"
 #include "src/motion/gait_classifier.h"
 #include "src/motion/locomotion_envelope.h"
+#include "src/motion/synthetic_base_filter.h"
 #include "src/motion/jump_inertial_source.h"
 #include "src/runtime/dev_command.h"
 #include "src/diagnostics/bone_dump_json.h"
@@ -335,6 +336,40 @@ static void TestQuat() {
   CHECK("powk 2 doubles", pk2.w < a.w);  // 17° -> half-angle 8.5° -> w smaller
   CHECK("slerp 0 = a", Near(QuatSlerp(a, id, 0.0f).w, a.w));
   CHECK("slerp 1 = b", Near(QuatSlerp(a, id, 1.0f).w, 1.0f));
+}
+
+// ---------- synthetic composition base ----------
+static float ZAngleDeg(Quat q) {
+  return RadToDeg(2.0f * atan2f(q.z, q.w));
+}
+
+static void TestSyntheticBaseFilter() {
+  printf("[SYNTHETIC BASE FILTER]\n");
+  SyntheticBaseFilter filter;
+  float maxNativeResidualDeg = 0.0f;
+  const float dt = 1.0f / 60.0f;
+  for (int frame = 0; frame < 7200; ++frame) {
+    float t = frame * dt;
+    float nativeDeg = 7.0f * sinf(2.0f * 3.14159265358979f * 2.983f * t);
+    float syntheticDeg =
+        22.0f * sinf(2.0f * 3.14159265358979f * 3.0f * t);
+    Quat current = QuatAxisAngle(2, DegToRad(nativeDeg));
+    Quat outR, outL;
+    filter.Compose(current, current, 2, DegToRad(syntheticDeg), dt,
+                   outR, outL);
+    if (t >= 2.0f) {
+      float residual = fabsf(ZAngleDeg(outR) - syntheticDeg);
+      if (residual > maxNativeResidualDeg) maxNativeResidualDeg = residual;
+    }
+  }
+  CHECK("synthetic base suppresses near-frequency native twist",
+        maxNativeResidualDeg < 1.6f);
+
+  Quat directR, directL;
+  Quat current = QuatAxisAngle(2, DegToRad(10.0f));
+  filter.ComposeDirect(current, current, 2, DegToRad(5.0f), directR, directL);
+  CHECK("synthetic direct composition preserves native pose",
+        Near(ZAngleDeg(directR), 15.0f, 1e-3f));
 }
 
 // ---------- hot reload ----------
@@ -1100,6 +1135,22 @@ static void TestTransformRecorderPolicy() {
         strstr(kTransformRecorderCsvHeader,
                "phase_rad,amp_env_deg,down_env_deg,freq_env_hz,synthetic_angle_deg") !=
             nullptr);
+  CHECK("recorder CSV carries breast world rotation and position",
+        strstr(kTransformRecorderCsvHeader,
+               "worldRotRx,worldRotRy,worldRotRz,worldRotRw") != nullptr &&
+            strstr(kTransformRecorderCsvHeader,
+                   "worldPosRx,worldPosRy,worldPosRz") != nullptr);
+  CHECK("recorder CSV carries parent local and world rotation",
+        strstr(kTransformRecorderCsvHeader,
+               "parentLocalRx,parentLocalRy,parentLocalRz,parentLocalRw") !=
+                nullptr &&
+            strstr(kTransformRecorderCsvHeader,
+                   "parentWorldRx,parentWorldRy,parentWorldRz,parentWorldRw") !=
+                nullptr);
+  CHECK("recorder CSV carries grandparent world rotation",
+        strstr(kTransformRecorderCsvHeader,
+               "grandWorldRx,grandWorldRy,grandWorldRz,grandWorldRw") !=
+            nullptr);
 }
 
 int main() {
@@ -1109,6 +1160,7 @@ int main() {
   TestGait();
   TestEnvelope();
   TestQuat();
+  TestSyntheticBaseFilter();
   TestHotReload();
   TestConfigValidation();
   TestRuntimePaths();

@@ -252,3 +252,62 @@ manager_crash.log
 - bone scan、axis write、recorder frame capture。
 
 不得在动画热路径新增文件 I/O、JSON parse、Sleep、managed allocation 或重复 Animator 全量扫描。
+
+## 10. Synthetic motion 的层级合成边界（2026-09-05）
+
+长窗口 recorder 已确认两类不同的周期性幅度变化：
+
+### 胸骨 local 同轴拍频
+
+弥弗连续 run 样本中：
+
+- synthetic oscillator 稳定在约 `3.00003 Hz`；
+- 胸骨 native local motion 约 `2.9829–2.9830 Hz`；
+- 两者频差约 `0.0171 Hz`，对应约 `58.5 s` 的完整拍频周期；
+- synthetic 自身没有 envelope 衰减，幅度低谷仍保留约 `2.99 Hz` 载波。
+
+这说明 independent synthetic 若无条件叠加到当前 local pose 中已有的近频、同轴 native oscillator，会产生可见相消。该结论只适用于这一 synthetic 组合语义；不能据此笼统判定所有模式中的 `target = current * dq` 都错误。`amplify_native` 仍应保留并增强游戏原生 delta。
+
+### 父骨链导致的视觉拍频
+
+提弗洛斯 run 样本中：
+
+- 胸骨 pre localRotation 近似静止，local synthetic target 也基本稳定；
+- synthetic 约为 `2.700012 Hz`；
+- 直接父骨 `Spine2` localRotation 的主频约 `1.494 Hz`，二次谐波约 `2.988–2.990 Hz`；
+- `parentLocal × breastLocal` 的 body-relative composite 出现约 `0.2903 Hz` 包络，即 `3.444–3.445 s` 周期；
+- 该周期与 `|2.989 - 2.700|` 的理论拍频一致；
+- 层级重构 `grandWorld × parentLocal = parentWorld`、`parentWorld × breastLocal = breastWorld` 的最大误差约 `0.00024°`。
+
+因此 recorder 中稳定的胸骨 local target 不等于最终视觉幅度稳定。最终画面还包含父骨链和 world-space 运动：
+
+```text
+breastWorld = ancestorWorld × parentLocal × breastLocal
+```
+
+### Filter 结论
+
+当前保留单级 `τ=0.30 s` synthetic base filter。实验性两级 filter 虽进一步压低胸骨 local residual，但也可能移除原先对父链/world-space 运动的偶然补偿，使最终视觉周期反而更明显。
+
+不要继续通过加重胸骨 local filter 来处理父链拍频。若未来必须消除父链影响，应作为独立的 ancestor/world-stabilized synthetic 语义设计和验证；直接抵消父骨运动会改变胸部跟随躯干的方式，不能作为最小 bugfix 全局启用。
+
+## 11. 提弗洛斯梦境切换后直接翻转：当前证据边界（2026-09-05）
+
+复现相关性：从正常世界进入梦境后触发，返回正常世界后恢复。
+
+现有 probe 日志显示场景期间确实发生 Animator/角色实例重绑定，但每次重绑定后：
+
+- `chr_id` 仍正确识别为 `chr_0034_typhoea`；
+- 左右胸骨仍解析为 `breast_base_R_a_01_jnt` / `breast_base_L_a_01_jnt`；
+- axis/sign 始终为 `axis=1 sign=+1`；
+- 没有 config hot reload、runtime error、显式 reset 或 bone lookup failure 与翻转同时出现。
+
+所附约 `12.75 s`、`gait=-1` CSV 中，排除复制时被截断的最后一行后，共 `765` 个有效 frame：
+
+- 左右 quaternion norm 均约为 `0.999999–1.000001`；
+- 无 quaternion 符号翻转；
+- 最大相邻帧旋转分别约 `0.61°` 与 `0.54°`；
+- 相对首帧最大变化约 `5.01°` 与 `4.42°`；
+- 未记录到接近 `180°` 的 localRotation 跳变。
+
+该 CSV 只有胸骨 localRotation，没有父骨/祖先 world rotation、Transform instance/parent identity 或切换瞬间前后配对样本。因此它不能判断翻转是否已被编码在新的父层级、bind pose、mesh/skinning 或场景专属后处理里。当前只能确认：翻转未表现为本插件所记录胸骨 localRotation 的突变，场景切换/重绑定相关性存在，但现有数据不足以定位因果。不得据此扩大 runtime 修改。

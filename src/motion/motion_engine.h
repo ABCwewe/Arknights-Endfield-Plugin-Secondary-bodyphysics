@@ -199,6 +199,7 @@ private:
           (active_.jumpDetected || jumpOut.valid || jumpOut.directLanding);
       if (jumpOwnsIntent) {
         if (!jumpOut.valid) {
+          active_.synthetic.baseFilter.Reset();
           active_.synthetic.targetValid = false;
           return;
         }
@@ -221,12 +222,16 @@ private:
       if (!jumpOut.valid &&
           !CanWriteSynthetic(active_.currentGait, active_.jumpDetected,
                              active_.profile->jump.enabled)) {
+        active_.synthetic.baseFilter.Reset();
         active_.synthetic.targetValid = false;
         return;
       }
 
       Quat targetR, targetL;
-      SyntheticMotion::ComposeTargets(active_, angle, targetR, targetL);
+      const bool filterNativeOscillation =
+          !jumpOwnsIntent && !active_.transitionToIdle;
+      SyntheticMotion::ComposeTargets(active_, angle, filterNativeOscillation,
+                                      targetR, targetL);
 
       active_.synthetic.targetR = targetR;
       active_.synthetic.targetL = targetL;
