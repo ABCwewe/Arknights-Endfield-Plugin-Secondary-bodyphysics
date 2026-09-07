@@ -22,6 +22,7 @@
     <sys:String x:Key="C_env_to_idle_tau_clips_containing_quo">Env to-idle tau — clips containing &amp;quot;stop&amp;quot; or &amp;quot;_to_idle&amp;quot;</sys:String>
     <sys:String x:Key="C_env_to_idle_tau_dedicated_stop_tail_">Env to-idle tau — dedicated stop/tail smoothing. Triggered when the clip name contains &amp;quot;stop&amp;quot; or &amp;quot;_to_idle&amp;quot;.</sys:String>
     <sys:String x:Key="C_frequency_hz">Frequency (Hz)</sys:String>
+    <sys:String x:Key="C_phase_offset_deg">Phase Offset (°)</sys:String>
     <sys:String x:Key="C_frequency_smoothing">Frequency smoothing</sys:String>
     <sys:String x:Key="C_gait">Gait</sys:String>
     <sys:String x:Key="C_higher_slower_frequency_changes_lowe">Higher = slower frequency changes · Lower = quicker response</sys:String>
@@ -97,6 +98,7 @@
     <sys:String x:Key="M_env_to_idle_tau_dedicated_stop_tail_">Env to-idle tau — dedicated stop/tail smoothing. Triggered when the clip name contains &amp;quot;stop&amp;quot; or &amp;quot;_to_idle&amp;quot;.</sys:String>
     <sys:String x:Key="M_for_motions_to_stop_higher_gentler_s">For motions to stop · Higher = gentler slower stop · Lower = sharper faster stop</sys:String>
     <sys:String x:Key="M_frequency_hz">Frequency (Hz)</sys:String>
+    <sys:String x:Key="M_phase_offset_deg">Phase Offset (°)</sys:String>
     <sys:String x:Key="M_frequency_smoothing">Frequency smoothing</sys:String>
     <sys:String x:Key="M_gait">Gait</sys:String>
     <sys:String x:Key="M_game">Game</sys:String>

@@ -19,6 +19,19 @@ struct SyntheticMotion {
   // Compute the output angle (radians, axis-sign applied) for this callback.
   // Advances envelope at most once per frame (multi-instance safe).
   float ComputeAngle(ActiveCharacterRuntime &c, const CharacterProfile &p) {
+    // PHASE TRACKING (PLL): feed the stable-loop clip phase reference to the
+    // envelope, which pulls its continuous phase toward it with a bounded
+    // rate each frame (no hard snap).  On fresh engagement with negligible
+    // amplitude (startup / character switch / idle->walk onset) an initial
+    // snap is invisible and aligns immediately; at non-zero amplitude
+    // (gait->gait switch) the pull converges smoothly instead.
+    const bool wasTracking = envelope.PhaseTrackingActive();
+    envelope.SetPhaseTracking(c.synthetic.phaseRefValid,
+                              c.synthetic.phaseRefRad);
+    if (c.synthetic.phaseRefValid && !wasTracking &&
+        envelope.Amplitude() < kPhaseSnapAmpThresholdRad &&
+        envelope.DownAmplitude() < kPhaseSnapAmpThresholdRad)
+      envelope.SetPhase(c.synthetic.phaseRefRad);
     int gait = c.currentGait;
     // baseline kGaitAmp is RADIANS; config stores degrees -> convert here
     bool validGait = gait >= GaitIdle && gait <= GaitZipline;

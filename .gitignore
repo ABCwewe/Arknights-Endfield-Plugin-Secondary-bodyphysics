@@ -115,3 +115,8 @@ artifacts/
 Thumbs.db
 Desktop.ini
 .DS_Store
+# ------------------------------------------------------------
+# Local codegraph index (never commit)
+# ------------------------------------------------------------
+
+.codegraph/

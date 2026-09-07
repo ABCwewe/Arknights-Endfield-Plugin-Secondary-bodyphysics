@@ -109,14 +109,16 @@ static bool ParseGaitParam(const jsonmini::Value *v, GaitParam &out,
   if (v->type != jsonmini::Value::Object ||
       !HasTypeIfPresent(*v, "amplitude_deg", jsonmini::Value::Number) ||
       !HasTypeIfPresent(*v, "amplitude_down_deg", jsonmini::Value::Number) ||
-      !HasTypeIfPresent(*v, "frequency_hz", jsonmini::Value::Number))
+      !HasTypeIfPresent(*v, "frequency_hz", jsonmini::Value::Number) ||
+      !HasTypeIfPresent(*v, "phase_offset_deg", jsonmini::Value::Number))
     return false;
   out.amplitudeDeg = (float)v->GetNumber("amplitude_deg", defAmp);
   // down amplitude: explicit only; 0 / absent = symmetric
   out.amplitudeDownDeg = (float)v->GetNumber("amplitude_down_deg", 0.0);
   out.frequencyHz = (float)v->GetNumber("frequency_hz", defFreq);
+  out.phaseOffsetDeg = (float)v->GetNumber("phase_offset_deg", 0.0);
   if (!IsFinite(out.amplitudeDeg) || !IsFinite(out.amplitudeDownDeg) ||
-      !IsFinite(out.frequencyHz))
+      !IsFinite(out.frequencyHz) || !IsFinite(out.phaseOffsetDeg))
     return false;
   return true;
 }

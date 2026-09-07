@@ -60,6 +60,12 @@ public class CharacterItem : ViewModelBase {
     public double SprintFreq { get => Data.Freq[3]; set { Data.Freq[3] = value; LogEdit("SprintFreq", value); OnPropertyChanged(); } }
     public double ZiplineFreq { get => Data.Freq[4]; set { Data.Freq[4] = value; LogEdit("ZiplineFreq", value); OnPropertyChanged(); } }
 
+    // per-gait phase alignment offset (deg, 0-180)
+    public double WalkPhaseOffset { get => Data.PhaseOffset[1]; set { Data.PhaseOffset[1] = value; LogEdit("WalkPhaseOffset", value); OnPropertyChanged(); } }
+    public double RunPhaseOffset { get => Data.PhaseOffset[2]; set { Data.PhaseOffset[2] = value; LogEdit("RunPhaseOffset", value); OnPropertyChanged(); } }
+    public double SprintPhaseOffset { get => Data.PhaseOffset[3]; set { Data.PhaseOffset[3] = value; LogEdit("SprintPhaseOffset", value); OnPropertyChanged(); } }
+    public double ZiplinePhaseOffset { get => Data.PhaseOffset[4]; set { Data.PhaseOffset[4] = value; LogEdit("ZiplinePhaseOffset", value); OnPropertyChanged(); } }
+
     public int AxisIndex {
         get => Data.Axis.Length == 0 ? 0 : Array.IndexOf(new[] { "X", "Y", "Z" }, Data.Axis) + 1;
         set {

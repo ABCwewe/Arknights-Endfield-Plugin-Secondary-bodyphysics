@@ -32,6 +32,7 @@ struct GaitParam {
   float amplitudeDeg = 0.0f;      // up (+direction) amplitude
   float amplitudeDownDeg = 0.0f;  // down (-direction); 0 = symmetric (=up)
   float frequencyHz = 1.0f;
+  float phaseOffsetDeg = 0.0f;    // phase alignment offset, [0, 180]
 };
 
 struct BoneConfig {

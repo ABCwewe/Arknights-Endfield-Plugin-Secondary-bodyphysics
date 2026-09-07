@@ -69,6 +69,18 @@ static bool ValidateSnapshot(const ConfigSnapshot &snap) {
           id.c_str());
       valid = false;
     }
+    // phase_offset_deg is bounded to [0, 180] (user-facing phase-alignment
+    // range); non-finite or out-of-range values reject the snapshot.
+    const GaitParam *gaitParams[] = {&p.idle, &p.walk, &p.run, &p.sprint,
+                                     &p.zipline};
+    for (const GaitParam *g : gaitParams) {
+      if (!_finite(g->phaseOffsetDeg) || g->phaseOffsetDeg < 0.0f ||
+          g->phaseOffsetDeg > 180.0f) {
+        Log("[CFG] character '%s': phase_offset_deg out of [0,180] -> INVALID",
+            id.c_str());
+        valid = false;
+      }
+    }
     if (p.animationRules.size() > 16) {
       Log("[CFG] character '%s': animation_rules exceeds 16 -> INVALID",
           id.c_str());

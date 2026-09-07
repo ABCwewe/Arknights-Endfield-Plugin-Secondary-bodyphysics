@@ -303,6 +303,105 @@ static void TestEnvelope() {
   for (int i = 0; i < 300; i++)
     EnvAdvance(env3, target, downT, 1.7f, false, 0.15f, 0.015f, 0.20f);
   CHECK("down amp converges separately", Near(env3.DownAmplitude(), downT, 1e-3f));
+  // phase anchor (mechanism-A fix)
+  LocomotionEnvelope envA;
+  envA.SetPhase(1.0);
+  EnvAdvance(envA, 0.0f, 0.0f, 1.7f, false, 0.15f, 0.015f, 0.20f);  // prime gate
+  EnvAdvance(envA, 0.0f, 0.0f, 1.7f, false, 0.15f, 0.015f, 0.20f);  // advance
+  CHECK("SetPhase anchors then advances from the anchor",
+        envA.Phase() > 1.0f && envA.Phase() < 1.3f);
+  LocomotionEnvelope envB;
+  envB.SetPhase(3.0 * 3.14159265358979);
+  CHECK("SetPhase wraps into [0,2pi)", envB.Phase() >= 0.0f &&
+                                          envB.Phase() < 6.2832f);
+  envB.SetPhase(-0.5);
+  CHECK("SetPhase wraps negatives", envB.Phase() > 5.5f);
+  CHECK("walk/run/sprint/zipline align eligible",
+        IsPhaseAlignEligible(GaitWalk, false, false) &&
+            IsPhaseAlignEligible(GaitRun, false, false) &&
+            IsPhaseAlignEligible(GaitSprint, false, false) &&
+            IsPhaseAlignEligible(GaitZipline, false, false));
+  CHECK("idle not align eligible",
+        !IsPhaseAlignEligible(GaitIdle, false, false));
+  CHECK("to-idle not align eligible",
+        !IsPhaseAlignEligible(GaitWalk, true, false));
+  CHECK("jump-mapped run not align eligible",
+        !IsPhaseAlignEligible(GaitRun, false, true));
+  CHECK("2-cycle mapping: loop start is phase 0",
+        Near((float)PhaseFromNormalizedTime(0.0f, 2.0), 0.0f));
+  CHECK("2-cycle mapping: quarter loop is half cycle",
+        Near((float)PhaseFromNormalizedTime(0.25f, 2.0),
+             3.14159265358979f));
+  CHECK("2-cycle mapping: half loop wraps to full cycle",
+        Near((float)PhaseFromNormalizedTime(0.5f, 2.0), 0.0f));
+  CHECK("2-cycle mapping: three-quarter loop is half cycle",
+        Near((float)PhaseFromNormalizedTime(0.75f, 2.0),
+             3.14159265358979f));
+  CHECK("1-cycle mapping unchanged",
+        Near((float)PhaseFromNormalizedTime(0.5f, 1.0),
+             3.14159265358979f));
+  CHECK("phase offset 180 inverts",
+        Near((float)ApplyGaitPhaseOffset(0.0, 180.0f),
+             3.14159265358979f));
+  CHECK("phase offset 0 keeps mapping",
+        Near((float)ApplyGaitPhaseOffset(1.0, 0.0f), 1.0f));
+  CHECK("phase offset wraps within [0,2pi)",
+        ApplyGaitPhaseOffset(5.5, 90.0f) >= 0.0 &&
+            ApplyGaitPhaseOffset(5.5, 90.0f) < 6.2832);
+  CHECK("per-gait offset lookup defaults 0",
+        GaitPhaseOffsetDeg(CharacterProfile(), GaitWalk) == 0.0f);
+  CharacterProfile po;
+  po.run.phaseOffsetDeg = 180.0f;
+  po.sprint.phaseOffsetDeg = 90.0f;
+  CHECK("per-gait offset lookup run",
+        GaitPhaseOffsetDeg(po, GaitRun) == 180.0f);
+  CHECK("per-gait offset lookup sprint",
+        GaitPhaseOffsetDeg(po, GaitSprint) == 90.0f);
+  CHECK("per-gait offset lookup zipline default",
+        GaitPhaseOffsetDeg(po, GaitZipline) == 0.0f);
+  // loop stability (phase-tracking reference validity)
+  CHECK("run loop is loop stable",
+        ClassifyClipNameFull("A_actor_girl_run_loop").loopStable);
+  CHECK("walk loop is loop stable",
+        ClassifyClipNameFull("A_actor_lady_walk_loop").loopStable);
+  CHECK("zipline traversal is loop stable",
+        ClassifyClipNameFull("A_actor_lady_interact_zipline_sp_02").loopStable);
+  CHECK("start clip not loop stable",
+        !ClassifyClipNameFull("walk_start_l_0_r").loopStable);
+  CHECK("stop clip not loop stable",
+        !ClassifyClipNameFull("run_stop_r").loopStable);
+  CHECK("to clip not loop stable",
+        !ClassifyClipNameFull("run_to_walk_r").loopStable);
+  CHECK("jump clip not loop stable",
+        !ClassifyClipNameFull("idle_jump_start_l").loopStable);
+  CHECK("zipline start not loop stable",
+        !ClassifyClipNameFull("A_actor_lady_interact_zipline_start").loopStable);
+  CHECK("idle loop not loop stable",
+        !ClassifyClipNameFull("A_actor_girl_idle_loop").loopStable);
+  // PLL phase tracking
+  CHECK("wrap error shortest path forward",
+        Near((float)WrapPhaseError(0.2, 1.0), 0.8f));
+  CHECK("wrap error shortest path backward",
+        Near((float)WrapPhaseError(0.2, 5.9), -0.583185307179586f));
+  LocomotionEnvelope pll;
+  pll.SetPhaseTracking(true, 3.14159265358979);
+  for (int i = 0; i < 150; i++)
+    EnvAdvance(pll, 0.0f, 0.0f, 0.0f, false, 0.5f, 0.015f, 0.20f);
+  CHECK("PLL pulls toward ref without jump",
+        pll.Phase() > 0.8f && pll.Phase() < 3.2f);
+  CHECK("PLL stays in [0,2pi)", pll.Phase() >= 0.0f && pll.Phase() < 6.2832f);
+  for (int i = 0; i < 400; i++)
+    EnvAdvance(pll, 0.0f, 0.0f, 0.0f, false, 0.5f, 0.015f, 0.20f);
+  CHECK("PLL converges to ref", Near(pll.Phase(), 3.14159265358979f, 0.4f));
+  LocomotionEnvelope freeEnv;
+  freeEnv.SetPhaseTracking(false, 3.14159265358979);
+  CHECK("no tracking disables PLL", !freeEnv.PhaseTrackingActive());
+  EnvAdvance(freeEnv, 0.0f, 0.0f, 1.5f, false, 0.5f, 0.015f, 0.20f);  // prime
+  EnvAdvance(freeEnv, 0.0f, 0.0f, 1.5f, false, 0.5f, 0.015f, 0.20f);  // advance
+  // two frames can only integrate a few degrees; a wrongly-enabled snap
+  // would land the phase at the reference (pi) instead.
+  CHECK("no tracking = integration only, not pulled to ref",
+        fabsf((float)WrapPhaseError(freeEnv.Phase(), 3.14159265358979)) > 2.0f);
   // GaitDownAmplitude fallback semantics (0 = symmetric = up); inlined here
   // because synthetic_motion.h pulls IL2CPP deps that verify cannot link.
   CharacterProfile p0;

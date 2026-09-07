@@ -79,6 +79,7 @@ public class CharacterDatabaseService {
             c.Amp[i] = JsonMini.GetNum(g, "amplitude_deg", c.Amp[i]);
             c.AmpDown[i] = JsonMini.GetNum(g, "amplitude_down_deg", 0.0);
             c.Freq[i] = JsonMini.GetNum(g, "frequency_hz", c.Freq[i]);
+            c.PhaseOffset[i] = JsonMini.GetNum(g, "phase_offset_deg", c.PhaseOffset[i]);
         }
     }
 
@@ -116,13 +117,17 @@ public class CharacterDatabaseService {
     }
 
     // Serialize one gait entry (used by preset + DB writers).
-    public static string GaitEntryJson(string name, double amp, double down, double freq) {
+    public static string GaitEntryJson(string name, double amp, double down, double freq,
+                                       double phaseOffset = 0.0) {
         var sb = new StringBuilder();
         sb.Append(JsonMini.Str(name))
           .Append(": { \"amplitude_deg\": ").Append(JsonMini.Num(amp));
         if (down > 0)
             sb.Append(", \"amplitude_down_deg\": ").Append(JsonMini.Num(down));
-        sb.Append(", \"frequency_hz\": ").Append(JsonMini.Num(freq)).Append(" }");
+        sb.Append(", \"frequency_hz\": ").Append(JsonMini.Num(freq));
+        if (phaseOffset != 0.0)
+            sb.Append(", \"phase_offset_deg\": ").Append(JsonMini.Num(phaseOffset));
+        sb.Append(" }");
         return sb.ToString();
     }
 
@@ -199,6 +204,7 @@ public class CharacterDatabaseService {
             g["amplitude_deg"] = c.Amp[i];
             if (c.AmpDown[i] > 0) g["amplitude_down_deg"] = c.AmpDown[i];
             g["frequency_hz"] = c.Freq[i];
+            g["phase_offset_deg"] = c.PhaseOffset[i];
             gait[gnames[i]] = g;
         }
         defaults["gait"] = gait;
@@ -318,7 +324,8 @@ public class CharacterDatabaseService {
                 gnames2[i],
                 JsonMini.GetNum(g, "amplitude_deg", 0),
                 JsonMini.GetNum(g, "amplitude_down_deg", 0),
-                JsonMini.GetNum(g, "frequency_hz", 1.5)));
+                JsonMini.GetNum(g, "frequency_hz", 1.5),
+                JsonMini.GetNum(g, "phase_offset_deg", 0)));
             wroteGait = true;
         }
         sb.Append("\r\n");

@@ -18,6 +18,13 @@ struct SyntheticRuntime {
   double lastAdvanceTime = 0.0;
   bool wasGroundLocomotionMoving = false;
   bool locomotionOnsetActive = false;
+  // Phase-tracking handshake (PLL): the 20Hz sampling layer publishes the
+  // stable-loop clip's phase (phaseRefRad) + validity (phaseRefValid) on
+  // every accepted-locomotion sample; SyntheticMotion feeds them to the
+  // envelope each frame, which pulls its continuous phase toward the ref
+  // with a bounded rate (no hard snap except at negligible amplitude).
+  bool phaseRefValid = false;
+  double phaseRefRad = 0.0;  // tracking target = 2pi*cycles*2*norm + offset
   float outAngleRad = 0.0f;
   Quat lastNativeR = QuatIdentity();
   Quat lastNativeL = QuatIdentity();

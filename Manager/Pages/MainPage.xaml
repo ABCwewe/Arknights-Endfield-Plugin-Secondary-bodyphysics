@@ -198,6 +198,7 @@
                             <ColumnDefinition Width="150" />
                             <ColumnDefinition Width="150" />
                             <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="150" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="28" />
@@ -225,6 +226,12 @@
                                    FontSize="11"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="4"
+                                   Text="{DynamicResource M_phase_offset_deg}"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
 
                         <TextBlock Grid.Row="1" Grid.Column="0"
                                    Text="{DynamicResource M_walk}"
@@ -244,6 +251,11 @@
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
                                  Text="{Binding Current.WalkFreq, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                        <TextBox Grid.Row="1" Grid.Column="4"
+                                 Height="30" Margin="4"
+                                 VerticalContentAlignment="Center"
+                                 TextAlignment="Right"
+                                 Text="{Binding Current.WalkPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                         <TextBlock Grid.Row="2" Grid.Column="0"
                                    Text="{DynamicResource M_run}"
@@ -263,6 +275,11 @@
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
                                  Text="{Binding Current.RunFreq, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                        <TextBox Grid.Row="2" Grid.Column="4"
+                                 Height="30" Margin="4"
+                                 VerticalContentAlignment="Center"
+                                 TextAlignment="Right"
+                                 Text="{Binding Current.RunPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                         <TextBlock Grid.Row="3" Grid.Column="0"
                                    Text="{DynamicResource M_sprint}"
@@ -282,6 +299,11 @@
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
                                  Text="{Binding Current.SprintFreq, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                        <TextBox Grid.Row="3" Grid.Column="4"
+                                 Height="30" Margin="4"
+                                 VerticalContentAlignment="Center"
+                                 TextAlignment="Right"
+                                 Text="{Binding Current.SprintPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
                         <TextBlock Grid.Row="4" Grid.Column="0"
                                    Text="{DynamicResource M_zipline}"
                                    Style="{StaticResource FieldLabel}" />
@@ -300,6 +322,11 @@
                                  VerticalContentAlignment="Center"
                                  TextAlignment="Right"
                                  Text="{Binding Current.ZiplineFreq, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                        <TextBox Grid.Row="4" Grid.Column="4"
+                                 Height="30" Margin="4"
+                                 VerticalContentAlignment="Center"
+                                 TextAlignment="Right"
+                                 Text="{Binding Current.ZiplinePhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                     </Grid>
                 </StackPanel>
             </Border>

@@ -232,6 +232,7 @@ public:
     bool jumpStart = false;
     bool attackActive = false;
     bool ziplineActive = false;
+    bool bestLoopStable = false;
     active.jumpDetected = false;  // recomputed every sample
     for (size_t i = 0; i < count; i++) {
       GaitClassification cls =
@@ -239,6 +240,7 @@ public:
       if (cls.gait >= GaitIdle && clips[i].weight > bestW) {
         bestW = clips[i].weight;
         bestGait = cls.gait;
+        bestLoopStable = cls.loopStable;
       }
       if (cls.transitionToIdle) transToIdle = true;
       if (cls.landingDetected) landing = true;
@@ -251,6 +253,34 @@ public:
     active.currentGait = bestGait;
     active.transitionToIdle = transToIdle;
     active.jumpActive = landing;
+
+    // PHASE TRACKING (PLL): publish the stable-loop clip's real phase
+    // (m_NormalizedTime, 2x symmetric-loop mapping + per-gait config offset)
+    // as a bounded tracking target.  The envelope pulls its continuous phase
+    // toward this reference every frame (no hard snap), so amplitude /
+    // frequency / phase all transition smoothly between gaits.  start/stop/
+    // _to_ transition clips and jump clips (loopStable=false) have no usable
+    // locomotion phase and disable tracking.
+    const bool trackEligible =
+        bestLoopStable && active.profile && active.profile->enabled &&
+        active.profile->motionMode == MotionMode::Synthetic &&
+        IsPhaseAlignEligible(bestGait, transToIdle, active.jumpDetected);
+    if (trackEligible) {
+      float norm = reader_.ReadNormalizedTime(callerAnimator);
+      if (norm >= 0.0f) {
+        active.synthetic.phaseRefRad = ApplyGaitPhaseOffset(
+            PhaseFromNormalizedTime(norm, kLocomotionPhaseCyclesPerLoop),
+            GaitPhaseOffsetDeg(*active.profile, bestGait));
+        active.synthetic.phaseRefValid = true;
+        static DWORD s_phaseLogT = 0;
+        if (RateLimit(s_phaseLogT, 2000))
+          ProbeLog("[PHASE] track gait=%d norm=%.3f ref=%.1fdeg\n", bestGait,
+                   norm, RadToDeg((float)active.synthetic.phaseRefRad));
+      }
+    } else {
+      active.synthetic.phaseRefValid = false;
+    }
+
     PublishJumpLiveSignal(active, now, movement, true, jumpStart, landing,
                           attackActive, ziplineActive);
     JumpPhaseAObserveClips(active, cfg, now, readStatus, clips, count,

@@ -7,10 +7,11 @@ rem Run this before publish_release.bat.
 rem ============================================================
 setlocal
 set "ROOT=%~dp0"
-set "GAMEROOT=E:\GAMU\Hypergryph Launcher\games\Endfield Game"
+set "GAMEROOT=G:\Hypergryph Launcher\games\Arknights Endfield"
 if not "%~1"=="" set "GAMEROOT=%~1"
 set "GAMEPLUGIN=%GAMEROOT%\plugin"
-set "DOTNET=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
+set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+if not exist "%DOTNET%" set "DOTNET=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
 set "MANAGER_OUT=%ROOT%Manager\bin\Release\net8.0-windows"
 set "MANAGER_FILES=SecondaryMotion.Manager.exe SecondaryMotion.Manager.dll SecondaryMotion.Manager.pdb SecondaryMotion.Manager.deps.json SecondaryMotion.Manager.runtimeconfig.json Wpf.Ui.dll"
 
