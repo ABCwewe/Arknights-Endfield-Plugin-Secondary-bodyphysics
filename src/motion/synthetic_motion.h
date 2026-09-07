@@ -9,6 +9,7 @@
 #include "../character/active_character.h"
 #include "../common/logger.h"
 #include "../config/config_types.h"
+#include "gait_classifier.h"
 #include "jump_controller.h"
 #include "locomotion_envelope.h"
 
@@ -38,6 +39,13 @@ struct SyntheticMotion {
     float ampTarget = validGait ? DegToRad(GaitAmplitude(p, gait)) : 0.0f;
     float downTarget = validGait ? DegToRad(GaitDownAmplitude(p, gait)) : 0.0f;
     float freqTarget = validGait ? GaitFrequency(p, gait) : 1.5f;
+    // Auto-frequency alignment: when the per-gait switch is on and a
+    // measured value is available, use the locked frequency.  The lock
+    // starts at the CONFIG value and only corrects toward the measurement
+    // on sustained deviation, so this is a no-op until correction engages.
+    if (validGait && GaitAutoFrequencyEnabled(p, gait) &&
+        c.synthetic.freq.measValid)
+      freqTarget = c.synthetic.freq.useHz;
 
     // Jump animations (any clip containing "jump", including landings) are
     // classified as Run and would write large run amplitudes during the

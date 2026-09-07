@@ -80,6 +80,13 @@ static bool ValidateSnapshot(const ConfigSnapshot &snap) {
             id.c_str());
         valid = false;
       }
+      // freq_dev_threshold is a fraction in (0,1) (default 0.05 = 5%).
+      if (!_finite(g->freqDevThreshold) || g->freqDevThreshold <= 0.0f ||
+          g->freqDevThreshold >= 1.0f) {
+        Log("[CFG] character '%s': freq_dev_threshold out of (0,1) -> INVALID",
+            id.c_str());
+        valid = false;
+      }
     }
     if (p.animationRules.size() > 16) {
       Log("[CFG] character '%s': animation_rules exceeds 16 -> INVALID",

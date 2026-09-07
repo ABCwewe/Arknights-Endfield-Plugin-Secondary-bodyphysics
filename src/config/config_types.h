@@ -33,6 +33,10 @@ struct GaitParam {
   float amplitudeDownDeg = 0.0f;  // down (-direction); 0 = symmetric (=up)
   float frequencyHz = 1.0f;
   float phaseOffsetDeg = 0.0f;    // phase alignment offset, [0, 180]
+  bool phaseAlign = true;         // PLL phase tracking switch (default on)
+  bool autoFrequency = true;      // auto frequency alignment switch (default on)
+  float freqDevThreshold = 0.05f; // dev threshold (fraction, 5%) that
+                                  // triggers correction toward measured freq
 };
 
 struct BoneConfig {

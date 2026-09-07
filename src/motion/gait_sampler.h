@@ -14,6 +14,7 @@
 #include "../diagnostics/jump_phase_a_probe.h"
 #include "../diagnostics/movement_signal_probe.h"
 #include "../il2cpp/animator_clip_reader.h"
+#include "freq_lock.h"
 #include "gait_classifier.h"
 
 static JumpPhaseAObservation JumpPhaseABaseObservation(
@@ -126,6 +127,9 @@ static void JumpPhaseAObserveClips(
   g_jumpPhaseATimeline.Observe(observation);
 }
 
+// ---- auto-frequency alignment ----  pure logic + state live in
+// motion/freq_lock.h (unit-testable); the 20Hz sampling layer below only
+// feeds it the per-gait params, the clip name, normalizedTime and now.
 class GaitSampler {
 public:
   GaitSampler(AnimatorClipReader &reader) : reader_(reader) {}
@@ -233,6 +237,7 @@ public:
     bool attackActive = false;
     bool ziplineActive = false;
     bool bestLoopStable = false;
+    char bestClipName[128] = {0};
     active.jumpDetected = false;  // recomputed every sample
     for (size_t i = 0; i < count; i++) {
       GaitClassification cls =
@@ -241,6 +246,7 @@ public:
         bestW = clips[i].weight;
         bestGait = cls.gait;
         bestLoopStable = cls.loopStable;
+        snprintf(bestClipName, sizeof(bestClipName), "%s", clips[i].name);
       }
       if (cls.transitionToIdle) transToIdle = true;
       if (cls.landingDetected) landing = true;
@@ -260,7 +266,8 @@ public:
     // toward this reference every frame (no hard snap), so amplitude /
     // frequency / phase all transition smoothly between gaits.  start/stop/
     // _to_ transition clips and jump clips (loopStable=false) have no usable
-    // locomotion phase and disable tracking.
+    // locomotion phase and disable tracking.  The per-gait phase_align
+    // switch disables the reference entirely (free integration).
     const bool trackEligible =
         bestLoopStable && active.profile && active.profile->enabled &&
         active.profile->motionMode == MotionMode::Synthetic &&
@@ -268,14 +275,27 @@ public:
     if (trackEligible) {
       float norm = reader_.ReadNormalizedTime(callerAnimator);
       if (norm >= 0.0f) {
-        active.synthetic.phaseRefRad = ApplyGaitPhaseOffset(
-            PhaseFromNormalizedTime(norm, kLocomotionPhaseCyclesPerLoop),
-            GaitPhaseOffsetDeg(*active.profile, bestGait));
-        active.synthetic.phaseRefValid = true;
-        static DWORD s_phaseLogT = 0;
-        if (RateLimit(s_phaseLogT, 2000))
-          ProbeLog("[PHASE] track gait=%d norm=%.3f ref=%.1fdeg\n", bestGait,
-                   norm, RadToDeg((float)active.synthetic.phaseRefRad));
+        // auto-frequency alignment runs regardless of the phase-align switch
+        const GaitParam &gp = GaitParamRef(*active.profile, bestGait);
+        FreqLockTick(active.synthetic.freq, gp, bestClipName, norm, now);
+        static DWORD s_freqLogT = 0;
+        if (RateLimit(s_freqLogT, 2000) && active.synthetic.freq.measValid)
+          ProbeLog("[FREQ] gait=%d cfg=%.2f meas=%.2f use=%.2f%s\n",
+                   bestGait, gp.frequencyHz, active.synthetic.freq.measHz,
+                   active.synthetic.freq.useHz,
+                   active.synthetic.freq.correcting ? " (correcting)" : "");
+        if (GaitPhaseAlignEnabled(*active.profile, bestGait)) {
+          active.synthetic.phaseRefRad = ApplyGaitPhaseOffset(
+              PhaseFromNormalizedTime(norm, kLocomotionPhaseCyclesPerLoop),
+              GaitPhaseOffsetDeg(*active.profile, bestGait));
+          active.synthetic.phaseRefValid = true;
+          static DWORD s_phaseLogT = 0;
+          if (RateLimit(s_phaseLogT, 2000))
+            ProbeLog("[PHASE] track gait=%d norm=%.3f ref=%.1fdeg\n", bestGait,
+                     norm, RadToDeg((float)active.synthetic.phaseRefRad));
+        } else {
+          active.synthetic.phaseRefValid = false;
+        }
       }
     } else {
       active.synthetic.phaseRefValid = false;

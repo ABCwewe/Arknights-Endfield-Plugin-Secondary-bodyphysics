@@ -61,6 +61,34 @@ static inline float GaitPhaseOffsetDeg(const CharacterProfile &p, int gait) {
   }
 }
 
+// Per-gait GaitParam accessor for the new per-animation switches
+// (phase_align / auto_frequency / freq_dev_threshold).
+static inline const GaitParam &GaitParamRef(const CharacterProfile &p,
+                                            int gait) {
+  switch (gait) {
+    case GaitWalk: return p.walk;
+    case GaitRun: return p.run;
+    case GaitSprint: return p.sprint;
+    case GaitZipline: return p.zipline;
+    default: return p.idle;
+  }
+}
+
+static inline bool GaitPhaseAlignEnabled(const CharacterProfile &p,
+                                         int gait) {
+  return GaitParamRef(p, gait).phaseAlign;
+}
+
+static inline bool GaitAutoFrequencyEnabled(const CharacterProfile &p,
+                                            int gait) {
+  return GaitParamRef(p, gait).autoFrequency;
+}
+
+static inline float GaitFreqDevThreshold(const CharacterProfile &p,
+                                         int gait) {
+  return GaitParamRef(p, gait).freqDevThreshold;
+}
+
 static inline double ApplyGaitPhaseOffset(double phaseRad, float offsetDeg) {
   return fmod(phaseRad + offsetDeg * 0.01745329251994329577,
               2.0 * 3.14159265358979);

@@ -11,6 +11,7 @@
 #include "src/config/config_loader.h"
 #include "src/config/config_validator.h"
 #include "src/motion/gait_classifier.h"
+#include "src/motion/freq_lock.h"
 #include "src/motion/locomotion_envelope.h"
 #include "src/motion/synthetic_base_filter.h"
 #include "src/motion/jump_inertial_source.h"
@@ -542,6 +543,32 @@ static void TestConfigValidation() {
         !ParamBlockAccepted("{\"jump\":{\"mode\":3}}"));
   CHECK("native factor type mismatch rejected",
         !ParamBlockAccepted("{\"native_amplify\":{\"factor\":\"bad\"}}"));
+  // per-gait phase-align / auto-frequency / dev-threshold parsing
+  CHECK("phase_align bool accepted",
+        ParamBlockAccepted("{\"gait\":{\"run\":{\"phase_align\":false}}}"));
+  CHECK("phase_align type mismatch rejected",
+        !ParamBlockAccepted("{\"gait\":{\"run\":{\"phase_align\":1}}}"));
+  CHECK("auto_frequency bool accepted",
+        ParamBlockAccepted("{\"gait\":{\"run\":{\"auto_frequency\":false}}}"));
+  CHECK("auto_frequency type mismatch rejected",
+        !ParamBlockAccepted("{\"gait\":{\"run\":{\"auto_frequency\":\"yes\"}}}"));
+  CHECK("freq_dev_threshold number accepted",
+        ParamBlockAccepted("{\"gait\":{\"run\":{\"freq_dev_threshold\":0.1}}}"));
+  CHECK("freq_dev_threshold type mismatch rejected",
+        !ParamBlockAccepted("{\"gait\":{\"run\":{\"freq_dev_threshold\":\"5%\"}}}"));
+  {
+    jsonmini::Parser p;
+    p.p = "{\"gait\":{\"run\":{\"phase_align\":false,\"auto_frequency\":false,"
+          "\"freq_dev_threshold\":0.15}}}";
+    jsonmini::Value v;
+    CharacterProfile profile;
+    CHECK("new gait fields parsed into GaitParam",
+          p.ParseValue(v) && ParseParamBlock(v, profile) &&
+              !profile.run.phaseAlign && !profile.run.autoFrequency &&
+              Near(profile.run.freqDevThreshold, 0.15f) &&
+              profile.walk.phaseAlign && profile.walk.autoFrequency &&
+              Near(profile.walk.freqDevThreshold, 0.05f));
+  }
 
   ConfigSnapshot validSnapshot;
   CharacterProfile validProfile;
@@ -556,6 +583,17 @@ static void TestConfigValidation() {
   invalidSnapshot.characters["valid"].bones.leftName.clear();
   CHECK("final validator rejects one-sided bone pair",
         !ValidateSnapshot(invalidSnapshot));
+
+  ConfigSnapshot badThreshold = validSnapshot;
+  badThreshold.characters["valid"].run.freqDevThreshold = 1.5f;
+  CHECK("final validator rejects threshold >= 1",
+        !ValidateSnapshot(badThreshold));
+  badThreshold.characters["valid"].run.freqDevThreshold = -0.1f;
+  CHECK("final validator rejects threshold <= 0",
+        !ValidateSnapshot(badThreshold));
+  badThreshold.characters["valid"].run.freqDevThreshold = 0.05f;
+  CHECK("final validator accepts default threshold",
+        ValidateSnapshot(badThreshold));
 
   auto RuntimeConfigAccepted = [](const char *json) {
     jsonmini::Parser p;
@@ -1200,6 +1238,158 @@ static void TestJumpInertialSource() {
                   false).valid);
 }
 
+// ---------- auto-frequency alignment (freq_lock.h) ----------
+static void TestFreqLock() {
+  printf("[FREQ-LOCK]\n");
+  const char *clip = "run_loop";
+  GaitParam gp;  // defaults: freq 1.0, autoFrequency on, threshold 0.05
+  gp.frequencyHz = 2.0f;
+
+  // measurement + matching config: no correction at all
+  {
+    FreqLockState f;
+    DWORD t = 1000;
+    float norm = 0.0f;
+    for (int i = 0; i < 20; i++) {  // phys 2.0 -> dNorm 0.05 per 50ms
+      FreqLockTick(f, gp, clip, norm, t);
+      norm += 0.05f;
+      if (norm >= 1.0f) norm -= 1.0f;  // also exercises the wrap path
+      t += 50;
+    }
+    CHECK("measurement converges to matching frequency",
+          f.measValid && Near(f.measHz, 2.0f, 0.1f));
+    CHECK("matching frequency never corrects",
+          !f.correcting && Near(f.useHz, 2.0f) && f.devCount == 0);
+  }
+
+  // sustained deviation (cfg 2.0 vs meas 2.2 = 9%) triggers correction,
+  // converges, then freezes below threshold/2
+  {
+    FreqLockState f;
+    DWORD t = 2000;
+    float norm = 0.0f;
+    bool sawCorrecting = false;
+    bool sawFreeze = false;
+    for (int i = 0; i < 40; i++) {  // phys 2.2 -> dNorm 0.055 per 50ms
+      FreqLockTick(f, gp, clip, norm, t);
+      norm += 0.055f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+      if (f.correcting) sawCorrecting = true;
+      if (sawCorrecting && !f.correcting) sawFreeze = true;
+    }
+    CHECK("sustained 9 percent deviation starts correcting", sawCorrecting);
+    CHECK("correction converges and freezes near measured",
+          sawFreeze && !f.correcting &&
+              fabsf(f.useHz - 2.2f) < 0.11f);
+    CHECK("corrected frequency differs from config",
+          fabsf(f.useHz - 2.0f) > 0.1f);
+  }
+
+  // large threshold never triggers
+  {
+    FreqLockState f;
+    GaitParam gpTh = gp;
+    gpTh.freqDevThreshold = 0.5f;  // 50%
+    DWORD t = 3000;
+    float norm = 0.0f;
+    for (int i = 0; i < 40; i++) {  // 9% deviation < 50% threshold
+      FreqLockTick(f, gpTh, clip, norm, t);
+      norm += 0.055f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+    }
+    CHECK("deviation below a large threshold never corrects",
+          !f.correcting && Near(f.useHz, 2.0f));
+  }
+
+  // auto_frequency off: measurement runs but correction never engages
+  {
+    FreqLockState f;
+    GaitParam gpOff = gp;
+    gpOff.autoFrequency = false;
+    DWORD t = 4000;
+    float norm = 0.0f;
+    for (int i = 0; i < 40; i++) {  // meas 2.2 vs cfg 2.0 = 9%
+      FreqLockTick(f, gpOff, clip, norm, t);
+      norm += 0.055f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+    }
+    CHECK("auto frequency off never corrects",
+        !f.correcting && Near(f.useHz, 2.0f) && f.measValid);
+  }
+
+  // clip switch: measurement resets, then restarts on the new clip
+  {
+    FreqLockState f;
+    DWORD t = 5000;
+    float norm = 0.0f;
+    for (int i = 0; i < 8; i++) {
+      FreqLockTick(f, gp, clip, norm, t);
+      norm += 0.055f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+    }
+    CHECK("clip A measured", f.measValid);
+    FreqLockTick(f, gp, "walk_loop", 0.0f, t);
+    CHECK("clip switch resets measurement and correction",
+          !f.measValid && !f.correcting && Near(f.useHz, 2.0f));
+    FreqLockTick(f, gp, "walk_loop", 0.04f, t + 50);
+    CHECK("re-arm sample has no delta yet", !f.measValid);
+    FreqLockTick(f, gp, "walk_loop", 0.08f, t + 100);
+    CHECK("measurement restarts after switch", f.measValid);
+  }
+
+  // config frequency change (hot reload) restarts from the new config
+  {
+    FreqLockState f;
+    DWORD t = 6000;
+    float norm = 0.0f;
+    for (int i = 0; i < 6; i++) {
+      FreqLockTick(f, gp, clip, norm, t);
+      norm += 0.05f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+    }
+    gp.frequencyHz = 2.4f;
+    FreqLockTick(f, gp, clip, norm, t);
+    CHECK("config change resets useHz to the new config",
+          Near(f.useHz, 2.4f) && !f.correcting && f.devCount < kFreqDevSamples);
+    gp.frequencyHz = 2.0f;
+  }
+
+  // invalid / implausible samples never produce a measurement
+  {
+    FreqLockState f;
+    FreqLockTick(f, gp, clip, -1.0f, 7000);
+    FreqLockTick(f, gp, clip, -1.0f, 7050);
+    CHECK("invalid normalizedTime skips measurement", !f.measValid);
+    FreqLockState f2;
+    FreqLockTick(f2, gp, clip, 0.0f, 7100);
+    FreqLockTick(f2, gp, clip, 0.6f, 7150);  // dNorm 0.6 > 0.5 rejected
+    CHECK("implausible delta rejected", !f2.measValid);
+  }
+
+  // per-gait switch helpers
+  CharacterProfile p;
+  CHECK("default phase align on", GaitPhaseAlignEnabled(p, GaitRun));
+  CHECK("default auto frequency on", GaitAutoFrequencyEnabled(p, GaitRun));
+  CHECK("default dev threshold 0.05",
+        Near(GaitFreqDevThreshold(p, GaitRun), 0.05f));
+  p.run.phaseAlign = false;
+  p.run.autoFrequency = false;
+  p.run.freqDevThreshold = 0.1f;
+  CHECK("per-gait overrides honored",
+        !GaitPhaseAlignEnabled(p, GaitRun) &&
+            !GaitAutoFrequencyEnabled(p, GaitRun) &&
+            Near(GaitFreqDevThreshold(p, GaitRun), 0.1f));
+  CHECK("other gaits keep defaults",
+        GaitPhaseAlignEnabled(p, GaitWalk) &&
+            GaitAutoFrequencyEnabled(p, GaitWalk) &&
+            Near(GaitFreqDevThreshold(p, GaitWalk), 0.05f));
+}
+
 // ---------- transform recorder diagnostics contract ----------
 static void TestTransformRecorderPolicy() {
   printf("[TRANSFORM RECORDER]\n");
@@ -1267,6 +1457,7 @@ int main() {
   TestDevCommandRevision();
   TestJumpPhaseAProbe();
   TestJumpInertialSource();
+  TestFreqLock();
   TestTransformRecorderPolicy();
 
   printf("\n=== RESULT: %d passed, %d failed ===\n", g_pass, g_fail);

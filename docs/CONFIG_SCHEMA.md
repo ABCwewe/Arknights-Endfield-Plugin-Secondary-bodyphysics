@@ -174,6 +174,9 @@ idle / walk / run / sprint / zipline
 - `amplitude_down_deg`：Down，缺失或 0 表示与 Up 对称；
 - `frequency_hz`：Hz；
 - `phase_offset_deg`：相位对齐偏移度数（0-180，缺失默认 0），在步态变化后的相位对齐时叠加到 clip 相位映射上。对称（左右交替）loop 的 run/sprint 通常取 180（反相）。
+- `phase_align`：布尔，默认 true。PLL 相位跟踪开关；false 时振荡器相位自由积分（不向 clip 相位收敛）。
+- `auto_frequency`：布尔，默认 true。自动频率对齐开关；false 时恒用 `frequency_hz`。
+- `freq_dev_threshold`：比例（0-1，默认 0.05 = 5%）。开启 `auto_frequency` 时，振荡器先使用配置 `frequency_hz`；实测动画 loop 频率与当前使用频率的偏差**连续 5 个 20Hz 采样**超过该阈值后，频率以每采样 20% 的有界速率向实测值校正，偏差降到阈值一半时冻结（滞回带）。实测物理频率 = `2 × 实测 loop 频率`（同 `kLocomotionPhaseCyclesPerLoop` 语义）。
 
 与相位对齐相关的 Runtime 行为：
 
@@ -255,6 +258,8 @@ Runtime 约 250 ms 轮询 `runtime/config.json`。只有 revision 变化才尝�
 - runtime revision 为非负整数；
 - global interval 为正整数；
 - native factor >0；
+- `phase_align` / `auto_frequency` 类型必须为 boolean；
+- `freq_dev_threshold` 必须为 (0,1) 内的 finite 比例；
 - animation rules 数量和 gait 映射合法。
 
 ### amplitude / frequency / tau

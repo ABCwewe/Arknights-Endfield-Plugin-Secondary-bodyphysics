@@ -224,13 +224,18 @@
                                        Style="{StaticResource SectionHintStyle}" />
                         </StackPanel>
 
-                        <Grid>
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled">
+                        <Grid HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="52" />
-                                <ColumnDefinition Width="118" />
-                                <ColumnDefinition Width="118" />
-                                <ColumnDefinition Width="118" />
-                                <ColumnDefinition Width="118" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="55" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="22" />
@@ -264,6 +269,24 @@
                                        FontSize="9"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="5"
+                                       Text="{DynamicResource C_phase_align}"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       FontSize="9"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="6"
+                                       Text="{DynamicResource C_auto_freq}"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       FontSize="9"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="7"
+                                       Text="{DynamicResource C_freq_dev_threshold}"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       FontSize="9"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
 
                             <TextBlock Grid.Row="1" Grid.Column="0"
                                        Text="{DynamicResource C_walk}"
@@ -292,6 +315,20 @@
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
                                      Text="{Binding Selected.WalkPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                            <CheckBox Grid.Row="1" Grid.Column="5"
+                                      IsChecked="{Binding Selected.WalkPhaseAlign, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <CheckBox Grid.Row="1" Grid.Column="6"
+                                      IsChecked="{Binding Selected.WalkAutoFreq, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <TextBox Grid.Row="1" Grid.Column="7"
+                                     Height="26" Margin="3"
+                                     FontSize="10"
+                                     VerticalContentAlignment="Center"
+                                     TextAlignment="Right"
+                                     Text="{Binding Selected.WalkFreqDevThreshold, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                             <TextBlock Grid.Row="2" Grid.Column="0"
                                        Text="{DynamicResource C_run}"
@@ -320,6 +357,20 @@
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
                                      Text="{Binding Selected.RunPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                            <CheckBox Grid.Row="2" Grid.Column="5"
+                                      IsChecked="{Binding Selected.RunPhaseAlign, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <CheckBox Grid.Row="2" Grid.Column="6"
+                                      IsChecked="{Binding Selected.RunAutoFreq, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <TextBox Grid.Row="2" Grid.Column="7"
+                                     Height="26" Margin="3"
+                                     FontSize="10"
+                                     VerticalContentAlignment="Center"
+                                     TextAlignment="Right"
+                                     Text="{Binding Selected.RunFreqDevThreshold, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
 
                             <TextBlock Grid.Row="3" Grid.Column="0"
                                        Text="{DynamicResource C_sprint}"
@@ -348,6 +399,20 @@
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
                                      Text="{Binding Selected.SprintPhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
+                            <CheckBox Grid.Row="3" Grid.Column="5"
+                                      IsChecked="{Binding Selected.SprintPhaseAlign, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <CheckBox Grid.Row="3" Grid.Column="6"
+                                      IsChecked="{Binding Selected.SprintAutoFreq, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <TextBox Grid.Row="3" Grid.Column="7"
+                                     Height="26" Margin="3"
+                                     FontSize="10"
+                                     VerticalContentAlignment="Center"
+                                     TextAlignment="Right"
+                                     Text="{Binding Selected.SprintFreqDevThreshold, Mode=TwoWay, Converter={StaticResource DoubleToText}}" />
                             <TextBlock Grid.Row="4" Grid.Column="0"
                                        Text="{DynamicResource C_zipline}"
                                        Style="{StaticResource CompactLabel}" />
@@ -375,7 +440,22 @@
                                      VerticalContentAlignment="Center"
                                      TextAlignment="Right"
                                      Text="{Binding Selected.ZiplinePhaseOffset, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
+                            <CheckBox Grid.Row="4" Grid.Column="5"
+                                      IsChecked="{Binding Selected.ZiplinePhaseAlign, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <CheckBox Grid.Row="4" Grid.Column="6"
+                                      IsChecked="{Binding Selected.ZiplineAutoFreq, Mode=TwoWay}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            <TextBox Grid.Row="4" Grid.Column="7"
+                                     Height="26" Margin="3"
+                                     FontSize="10"
+                                     VerticalContentAlignment="Center"
+                                     TextAlignment="Right"
+                                     Text="{Binding Selected.ZiplineFreqDevThreshold, Mode=TwoWay, Converter={StaticResource DoubleToText}}"  />
                         </Grid>
+                        </ScrollViewer>
                     </StackPanel>
                 </Border>
 
