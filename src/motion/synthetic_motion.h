@@ -39,12 +39,14 @@ struct SyntheticMotion {
     float ampTarget = validGait ? DegToRad(GaitAmplitude(p, gait)) : 0.0f;
     float downTarget = validGait ? DegToRad(GaitDownAmplitude(p, gait)) : 0.0f;
     float freqTarget = validGait ? GaitFrequency(p, gait) : 1.5f;
-    // Auto-frequency alignment: when the per-gait switch is on and a
-    // measured value is available, use the locked frequency.  The lock
-    // starts at the CONFIG value and only corrects toward the measurement
-    // on sustained deviation, so this is a no-op until correction engages.
+    // Auto-frequency alignment: when the per-gait switch is on, use the
+    // locked frequency.  useHz always holds a usable value (config, cached
+    // fitted frequency, or correction in flight), so the cached value is
+    // effective immediately after a clip/character switch — no wait for the
+    // measurement to re-arm.  useHz > 0 guards the pre-first-sample window
+    // (character just switched, no clip sampled yet).
     if (validGait && GaitAutoFrequencyEnabled(p, gait) &&
-        c.synthetic.freq.measValid)
+        c.synthetic.freq.useHz > 0.0f)
       freqTarget = c.synthetic.freq.useHz;
 
     // Jump animations (any clip containing "jump", including landings) are

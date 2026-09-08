@@ -17,6 +17,59 @@ static constexpr float kFreqCorrectionStep = 0.2f;   // per-sample pull toward m
 static constexpr int   kFreqDevSamples = 5;          // samples before correction (~0.25s)
 static constexpr float kFreqMeasMaxDeltaNorm = 0.5f; // reject > half-loop per 50ms
 static constexpr double kFreqLockCyclesPerLoop = 2.0;  // 1:2 loop->oscillator mapping
+static constexpr int   kFreqCacheMax = 32;           // fitted-frequency cache slots
+
+// Session-level fitted-frequency cache, keyed by (characterId, gait).
+// A completed correction persists its final frequency here so character or
+// gait switches REUSE the learned value instead of restarting from config.
+// Fixed-size array -> zero allocation (safe on the 20Hz callback path).
+struct FreqCacheEntry {
+  char charId[128] = {0};
+  int gait = GaitNone;
+  float hz = 0.0f;
+};
+
+struct FreqCache {
+  FreqCacheEntry entries[kFreqCacheMax];
+  int count = 0;
+  int nextSlot = 0;  // ring cursor for replacement when full
+
+  float *Find(const char *charId, int gait) {
+    if (!charId || !charId[0]) return nullptr;
+    for (int i = 0; i < count; i++)
+      if (entries[i].gait == gait &&
+          strcmp(entries[i].charId, charId) == 0)
+        return &entries[i].hz;
+    return nullptr;
+  }
+
+  void Put(const char *charId, int gait, float hz) {
+    if (!charId || !charId[0] || hz <= 0.0f) return;
+    if (float *e = Find(charId, gait)) {
+      *e = hz;
+      return;
+    }
+    int slot = count < kFreqCacheMax ? count++ : nextSlot;
+    if (count == kFreqCacheMax) nextSlot = (nextSlot + 1) % kFreqCacheMax;
+    FreqCacheEntry &en = entries[slot];
+    snprintf(en.charId, sizeof(en.charId), "%s", charId);
+    en.gait = gait;
+    en.hz = hz;
+  }
+
+  // Drop one (character, gait) entry (e.g. the user manually changed the
+  // config frequency -> their input is authoritative, re-learn from it).
+  void Invalidate(const char *charId, int gait) {
+    for (int i = 0; i < count; i++) {
+      if (entries[i].gait == gait &&
+          strcmp(entries[i].charId, charId) == 0) {
+        for (int j = i; j < count - 1; j++) entries[j] = entries[j + 1];
+        count--;
+        return;
+      }
+    }
+  }
+};
 
 struct FreqLockState {
   float useHz = 0.0f;       // current oscillator frequency (cfg or corrected)
@@ -25,6 +78,9 @@ struct FreqLockState {
   bool measValid = false;   // measurement published
   bool correcting = false;  // currently pulling useHz toward measHz
   int devCount = 0;         // consecutive over-threshold samples
+  int lastGait = GaitNone;  // gait of the last sample (cfg-change detection
+                            // is per-gait: a gait switch changes cfgHz too,
+                            // but that is NOT a user config edit)
   // measurement scratch (20Hz, reset on clip switch)
   float lastNorm = -1.0f;
   DWORD lastNormMs = 0;
@@ -33,19 +89,38 @@ struct FreqLockState {
 };
 
 // One 20Hz sample.  `g` is the per-gait GaitParam of the current clip;
-// `clipName` change restarts measurement + correction from the config value.
+// `clipName` change restarts measurement; `cache` holds the learned
+// (characterId, gait) frequencies so switches reuse them instead of falling
+// back to the config value.
 static inline void FreqLockTick(FreqLockState &f, const GaitParam &g,
-                                const char *clipName, float norm, DWORD now) {
+                                const char *clipName, float norm, DWORD now,
+                                int gait, FreqCache &cache,
+                                const char *charId) {
   const float cfgHz = g.frequencyHz;
 
-  // clip switch -> restart measurement + correction from the config value
+  // clip switch -> restart measurement.  On a plain switch, reuse the cached
+  // fitted frequency for (character, gait) when available, else start from
+  // the config value.  A config change that happens to coincide with the
+  // switch (hot reload + clip change in the same sample window) is detected
+  // via the previous cfgHz — but ONLY within the same gait: a gait switch
+  // naturally changes the per-gait config frequency and must not be treated
+  // as a user config edit (that would discard the cached fit).
   if (strcmp(f.lastClip, clipName) != 0) {
     snprintf(f.lastClip, sizeof(f.lastClip), "%s", clipName);
     f.havePrev = false;
     f.lastNorm = -1.0f;
     f.lastNormMs = 0;
+    const bool cfgChanged =
+        f.lastGait == gait && f.cfgHz > 0.0f && cfgHz != f.cfgHz;
+    f.lastGait = gait;
     f.cfgHz = cfgHz;
-    f.useHz = cfgHz;
+    if (cfgChanged) {
+      f.useHz = cfgHz;
+      cache.Invalidate(charId, gait);
+    } else {
+      const float *cached = cache.Find(charId, gait);
+      f.useHz = cached ? *cached : cfgHz;
+    }
     f.measValid = false;
     f.correcting = false;
     f.devCount = 0;
@@ -53,12 +128,15 @@ static inline void FreqLockTick(FreqLockState &f, const GaitParam &g,
   }
 
   // config frequency is primary: a config change (hot reload / per-gait
-  // switch) restarts from the new config value
+  // switch / user edit) restarts from the new config value and invalidates
+  // the cached fit — the user's manual input is authoritative and the cache
+  // re-learns from it
   if (cfgHz != f.cfgHz) {
     f.cfgHz = cfgHz;
     f.useHz = cfgHz;
     f.correcting = false;
     f.devCount = 0;
+    cache.Invalidate(charId, gait);
   }
 
   // measurement: loop frequency from the normalizedTime delta (already
@@ -100,6 +178,9 @@ static inline void FreqLockTick(FreqLockState &f, const GaitParam &g,
   // freezing at the trigger edge (4.7% for a 5% threshold).
   if (f.correcting) {
     f.useHz += (f.measHz - f.useHz) * kFreqCorrectionStep;
-    if (fabsf(f.useHz - f.measHz) / f.measHz < th * 0.5f) f.correcting = false;
+    if (fabsf(f.useHz - f.measHz) / f.measHz < th * 0.5f) {
+      f.correcting = false;
+      cache.Put(charId, gait, f.useHz);  // persist the fitted frequency
+    }
   }
 }

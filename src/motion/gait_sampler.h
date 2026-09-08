@@ -277,7 +277,8 @@ public:
       if (norm >= 0.0f) {
         // auto-frequency alignment runs regardless of the phase-align switch
         const GaitParam &gp = GaitParamRef(*active.profile, bestGait);
-        FreqLockTick(active.synthetic.freq, gp, bestClipName, norm, now);
+        FreqLockTick(active.synthetic.freq, gp, bestClipName, norm, now,
+                     bestGait, freqCache_, active.characterId);
         static DWORD s_freqLogT = 0;
         if (RateLimit(s_freqLogT, 2000) && active.synthetic.freq.measValid)
           ProbeLog("[FREQ] gait=%d cfg=%.2f meas=%.2f use=%.2f%s\n",
@@ -368,4 +369,8 @@ private:
   }
 
   AnimatorClipReader &reader_;
+  // Session-level fitted-frequency cache (learned per character+gait).
+  // Fixed-size, zero allocation; survives character switches so re-entering
+  // a character reuses its fitted frequency instead of re-learning it.
+  FreqCache freqCache_;
 };

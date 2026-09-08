@@ -1248,10 +1248,11 @@ static void TestFreqLock() {
   // measurement + matching config: no correction at all
   {
     FreqLockState f;
+    FreqCache cache;
     DWORD t = 1000;
     float norm = 0.0f;
     for (int i = 0; i < 20; i++) {  // phys 2.0 -> dNorm 0.05 per 50ms
-      FreqLockTick(f, gp, clip, norm, t);
+      FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.05f;
       if (norm >= 1.0f) norm -= 1.0f;  // also exercises the wrap path
       t += 50;
@@ -1260,18 +1261,21 @@ static void TestFreqLock() {
           f.measValid && Near(f.measHz, 2.0f, 0.1f));
     CHECK("matching frequency never corrects",
           !f.correcting && Near(f.useHz, 2.0f) && f.devCount == 0);
+    CHECK("no fit means no cache entry",
+          cache.Find("chr_test", GaitRun) == nullptr);
   }
 
   // sustained deviation (cfg 2.0 vs meas 2.2 = 9%) triggers correction,
-  // converges, then freezes below threshold/2
+  // converges, then freezes below threshold/2 and persists the fit
   {
     FreqLockState f;
+    FreqCache cache;
     DWORD t = 2000;
     float norm = 0.0f;
     bool sawCorrecting = false;
     bool sawFreeze = false;
     for (int i = 0; i < 40; i++) {  // phys 2.2 -> dNorm 0.055 per 50ms
-      FreqLockTick(f, gp, clip, norm, t);
+      FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.055f;
       if (norm >= 1.0f) norm -= 1.0f;
       t += 50;
@@ -1284,17 +1288,169 @@ static void TestFreqLock() {
               fabsf(f.useHz - 2.2f) < 0.11f);
     CHECK("corrected frequency differs from config",
           fabsf(f.useHz - 2.0f) > 0.1f);
+    const float *cached = cache.Find("chr_test", GaitRun);
+    CHECK("fitted frequency persisted to cache",
+          cached != nullptr && fabsf(*cached - 2.2f) < 0.11f &&
+              fabsf(*cached - f.useHz) < 1e-4f);
+  }
+
+  // cached fit is reused across clip switches (same character + gait); no
+  // re-fit happens while the cached value matches the measurement
+  {
+    FreqCache cache;
+    {
+      FreqLockState f;
+      DWORD t = 2100;
+      float norm = 0.0f;
+      for (int i = 0; i < 40; i++) {
+        FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
+        norm += 0.055f;
+        if (norm >= 1.0f) norm -= 1.0f;
+        t += 50;
+      }
+    }
+    const float cachedHz = *cache.Find("chr_test", GaitRun);
+    FreqLockState f2;
+    DWORD t2 = 2200;
+    float n2 = 0.0f;
+    FreqLockTick(f2, gp, "run_loop_b", 0.0f, t2, GaitRun, cache, "chr_test");
+    CHECK("clip switch reuses the cached frequency",
+          Near(f2.useHz, cachedHz, 1e-4f) && f2.useHz != gp.frequencyHz);
+    bool sawCorr = false;
+    for (int i = 0; i < 20; i++) {
+      FreqLockTick(f2, gp, "run_loop_b", n2, t2, GaitRun, cache, "chr_test");
+      n2 += 0.055f;
+      if (n2 >= 1.0f) n2 -= 1.0f;
+      t2 += 50;
+      if (f2.correcting) sawCorr = true;
+    }
+    CHECK("cached match requires no re-fit",
+          !sawCorr && Near(f2.useHz, cachedHz, 1e-3f));
+  }
+
+  // per-character isolation: another character starts from config and gets
+  // its own cache slot
+  {
+    FreqCache cache;
+    FreqLockState f;
+    DWORD t = 2300;
+    float norm = 0.0f;
+    FreqLockTick(f, gp, clip, 0.0f, t, GaitRun, cache, "chr_other");
+    CHECK("other character starts from config frequency",
+          Near(f.useHz, 2.0f));
+    for (int i = 0; i < 40; i++) {
+      FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_other");
+      norm += 0.055f;
+      if (norm >= 1.0f) norm -= 1.0f;
+      t += 50;
+    }
+    CHECK("per-character cache slots",
+          cache.Find("chr_test", GaitRun) == nullptr &&
+              cache.Find("chr_other", GaitRun) != nullptr);
+  }
+
+  // gait switch (different per-gait config frequencies) must NOT look like a
+  // user config edit: the cache survives and the fitted value is reused when
+  // returning to the gait
+  {
+    FreqCache cache;
+    {
+      FreqLockState f;
+      DWORD t = 2500;
+      float norm = 0.0f;
+      for (int i = 0; i < 40; i++) {
+        FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
+        norm += 0.055f;
+        if (norm >= 1.0f) norm -= 1.0f;
+        t += 50;
+      }
+    }
+    const float cachedRun = *cache.Find("chr_test", GaitRun);
+    GaitParam gpWalk = gp;
+    gpWalk.frequencyHz = 1.5f;  // walk has its own per-gait config frequency
+    FreqLockState f;
+    DWORD t = 2600;
+    FreqLockTick(f, gpWalk, "walk_loop", 0.0f, t, GaitWalk, cache, "chr_test");
+    CHECK("gait switch keeps the run cache",
+          cache.Find("chr_test", GaitRun) != nullptr);
+    CHECK("gait without cache starts from its own config",
+          Near(f.useHz, 1.5f));
+    FreqLockTick(f, gp, "run_loop", 0.0f, t + 50, GaitRun, cache, "chr_test");
+    CHECK("returning to a gait reuses its cached fit",
+          Near(f.useHz, cachedRun, 1e-4f));
+    CHECK("no invalidation across gait switches",
+        cache.Find("chr_test", GaitRun) != nullptr &&
+            cache.Find("chr_test", GaitWalk) == nullptr);
+  }
+
+  // config frequency change invalidates the cached fit (user input wins)
+  {
+    FreqCache cache;
+    {
+      FreqLockState f;
+      DWORD t = 2400;
+      float norm = 0.0f;
+      for (int i = 0; i < 40; i++) {
+        FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
+        norm += 0.055f;
+        if (norm >= 1.0f) norm -= 1.0f;
+        t += 50;
+      }
+    }
+    CHECK("cache populated before invalidation",
+          cache.Find("chr_test", GaitRun) != nullptr);
+    GaitParam gpNew = gp;
+    gpNew.frequencyHz = 2.6f;
+    FreqLockState f2;
+    DWORD t2 = 2450;
+    float n2 = 0.0f;
+    // establish the config baseline (2.0) on the old clip first
+    for (int i = 0; i < 6; i++) {
+      FreqLockTick(f2, gp, clip, n2, t2, GaitRun, cache, "chr_test");
+      n2 += 0.055f;
+      if (n2 >= 1.0f) n2 -= 1.0f;
+      t2 += 50;
+    }
+    // switch coincides with the config change: user input must win
+    FreqLockTick(f2, gpNew, "run_loop_c", n2, t2, GaitRun, cache, "chr_test");
+    CHECK("config change alongside clip switch invalidates the cache",
+          cache.Find("chr_test", GaitRun) == nullptr);
+    CHECK("config change restarts from the new config",
+          Near(f2.useHz, 2.6f));
+  }
+
+  // cache ring replacement: full cache keeps its cap and never overflows
+  {
+    FreqCache big;
+    for (int i = 0; i < 40; i++) {
+      char id[64];
+      snprintf(id, sizeof(id), "chr_%02d", i);
+      big.Put(id, GaitRun, 1.0f + i * 0.1f);
+    }
+    CHECK("cache caps at kFreqCacheMax", big.count == kFreqCacheMax);
+    big.Put("chr_99", GaitWalk, 2.0f);
+    big.Put("chr_98", GaitWalk, 2.1f);
+    CHECK("ring replacement keeps the cap", big.count == kFreqCacheMax);
+    CHECK("ring slot accepts new entries",
+          big.Find("chr_99", GaitWalk) != nullptr &&
+              big.Find("chr_98", GaitWalk) != nullptr);
+    // invalidate compacts and frees a slot
+    big.Invalidate("chr_00", GaitRun);
+    CHECK("invalidate removes exactly one entry",
+          big.count == kFreqCacheMax - 1 &&
+              big.Find("chr_00", GaitRun) == nullptr);
   }
 
   // large threshold never triggers
   {
     FreqLockState f;
+    FreqCache cache;
     GaitParam gpTh = gp;
     gpTh.freqDevThreshold = 0.5f;  // 50%
     DWORD t = 3000;
     float norm = 0.0f;
     for (int i = 0; i < 40; i++) {  // 9% deviation < 50% threshold
-      FreqLockTick(f, gpTh, clip, norm, t);
+      FreqLockTick(f, gpTh, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.055f;
       if (norm >= 1.0f) norm -= 1.0f;
       t += 50;
@@ -1306,12 +1462,13 @@ static void TestFreqLock() {
   // auto_frequency off: measurement runs but correction never engages
   {
     FreqLockState f;
+    FreqCache cache;
     GaitParam gpOff = gp;
     gpOff.autoFrequency = false;
     DWORD t = 4000;
     float norm = 0.0f;
     for (int i = 0; i < 40; i++) {  // meas 2.2 vs cfg 2.0 = 9%
-      FreqLockTick(f, gpOff, clip, norm, t);
+      FreqLockTick(f, gpOff, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.055f;
       if (norm >= 1.0f) norm -= 1.0f;
       t += 50;
@@ -1323,37 +1480,39 @@ static void TestFreqLock() {
   // clip switch: measurement resets, then restarts on the new clip
   {
     FreqLockState f;
+    FreqCache cache;
     DWORD t = 5000;
     float norm = 0.0f;
     for (int i = 0; i < 8; i++) {
-      FreqLockTick(f, gp, clip, norm, t);
+      FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.055f;
       if (norm >= 1.0f) norm -= 1.0f;
       t += 50;
     }
     CHECK("clip A measured", f.measValid);
-    FreqLockTick(f, gp, "walk_loop", 0.0f, t);
+    FreqLockTick(f, gp, "walk_loop", 0.0f, t, GaitRun, cache, "chr_test");
     CHECK("clip switch resets measurement and correction",
           !f.measValid && !f.correcting && Near(f.useHz, 2.0f));
-    FreqLockTick(f, gp, "walk_loop", 0.04f, t + 50);
+    FreqLockTick(f, gp, "walk_loop", 0.04f, t + 50, GaitRun, cache, "chr_test");
     CHECK("re-arm sample has no delta yet", !f.measValid);
-    FreqLockTick(f, gp, "walk_loop", 0.08f, t + 100);
+    FreqLockTick(f, gp, "walk_loop", 0.08f, t + 100, GaitRun, cache, "chr_test");
     CHECK("measurement restarts after switch", f.measValid);
   }
 
   // config frequency change (hot reload) restarts from the new config
   {
     FreqLockState f;
+    FreqCache cache;
     DWORD t = 6000;
     float norm = 0.0f;
     for (int i = 0; i < 6; i++) {
-      FreqLockTick(f, gp, clip, norm, t);
+      FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
       norm += 0.05f;
       if (norm >= 1.0f) norm -= 1.0f;
       t += 50;
     }
     gp.frequencyHz = 2.4f;
-    FreqLockTick(f, gp, clip, norm, t);
+    FreqLockTick(f, gp, clip, norm, t, GaitRun, cache, "chr_test");
     CHECK("config change resets useHz to the new config",
           Near(f.useHz, 2.4f) && !f.correcting && f.devCount < kFreqDevSamples);
     gp.frequencyHz = 2.0f;
@@ -1362,12 +1521,13 @@ static void TestFreqLock() {
   // invalid / implausible samples never produce a measurement
   {
     FreqLockState f;
-    FreqLockTick(f, gp, clip, -1.0f, 7000);
-    FreqLockTick(f, gp, clip, -1.0f, 7050);
+    FreqCache cache;
+    FreqLockTick(f, gp, clip, -1.0f, 7000, GaitRun, cache, "chr_test");
+    FreqLockTick(f, gp, clip, -1.0f, 7050, GaitRun, cache, "chr_test");
     CHECK("invalid normalizedTime skips measurement", !f.measValid);
     FreqLockState f2;
-    FreqLockTick(f2, gp, clip, 0.0f, 7100);
-    FreqLockTick(f2, gp, clip, 0.6f, 7150);  // dNorm 0.6 > 0.5 rejected
+    FreqLockTick(f2, gp, clip, 0.0f, 7100, GaitRun, cache, "chr_test");
+    FreqLockTick(f2, gp, clip, 0.6f, 7150, GaitRun, cache, "chr_test");  // dNorm 0.6 > 0.5 rejected
     CHECK("implausible delta rejected", !f2.measValid);
   }
 
